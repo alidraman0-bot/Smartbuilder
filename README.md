@@ -1,4 +1,5 @@
 # Smartbuilder 🚀
+The world's first AI co-founder
 
 Smartbuilder is an autonomous startup generation platform that uses FSM-driven orchestration and multi-provider AI to generate, build, and deploy MVPs.
 
