@@ -225,7 +225,10 @@ export const useRunStore = create<RunState>((set) => ({
             if (shouldStop) {
                 clearInterval(interval);
             }
-        }, 1000);
+            if (shouldStop) {
+                clearInterval(interval);
+            }
+        }, 3000); // Relaxed polling for performance
     },
 
     rollbackDeployment: async (deploymentId: string, reason: string) => {
@@ -279,7 +282,7 @@ export const useRunStore = create<RunState>((set) => ({
         };
 
         fetchData();
-        const interval = setInterval(fetchData, 2000); // 2s polling is sufficient for dashboard
+        const interval = setInterval(fetchData, 5000); // Relaxed to 5s to reduce load
         return () => clearInterval(interval);
     },
 
@@ -313,7 +316,7 @@ export const useRunStore = create<RunState>((set) => ({
         const interval = setInterval(async () => {
             const shouldStop = await fetchMonitorData();
             if (shouldStop) clearInterval(interval);
-        }, 2000);
+        }, 5000); // Relaxed to 5s
         return () => clearInterval(interval);
     },
 

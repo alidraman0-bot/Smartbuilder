@@ -34,24 +34,14 @@ export default function DashboardWrapper({ children }: { children: React.ReactNo
 
     return (
         <div className="flex h-screen w-full bg-black text-white overflow-hidden relative">
-            {/* Premium Noise Overlay */}
-            <div className="noise-overlay" />
+            {/* Performance Optimized Background */}
 
-            {/* World-Class Gradient Mesh Background */}
-            <div className="gradient-mesh" />
-
-            {/* Enhanced Ambient Glow Effects */}
-            <div className="absolute top-0 left-0 w-full h-full pointer-events-none overflow-hidden z-0">
-                <div className="absolute top-[-10%] right-[-10%] w-[70%] h-[70%] bg-indigo-600/15 rounded-full blur-[160px] animate-pulse-slow" />
-                <div className="absolute bottom-[-15%] left-[-15%] w-[60%] h-[60%] bg-purple-600/15 rounded-full blur-[160px] animate-pulse-slow" style={{ animationDelay: '2s' }} />
-                <div className="absolute top-[50%] left-[50%] w-[40%] h-[40%] bg-pink-600/10 rounded-full blur-[120px] animate-pulse-slow" style={{ animationDelay: '4s' }} />
-                {/* Subtle Grid Pattern */}
-                <div className="absolute inset-0 opacity-[0.03]" style={{
-                    backgroundImage: `linear-gradient(rgba(255,255,255,0.1) 1px, transparent 1px),
+            {/* Subtle Grid Pattern */}
+            <div className="absolute inset-0 opacity-[0.03] pointer-events-none z-0" style={{
+                backgroundImage: `linear-gradient(rgba(255,255,255,0.1) 1px, transparent 1px),
                                      linear-gradient(90deg, rgba(255,255,255,0.1) 1px, transparent 1px)`,
-                    backgroundSize: '64px 64px'
-                }} />
-            </div>
+                backgroundSize: '64px 64px'
+            }} />
 
             {/* Left Sidebar */}
             <div className="w-72 glass-panel shrink-0 z-10 border-r border-white/5">

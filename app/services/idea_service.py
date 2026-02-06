@@ -50,8 +50,8 @@ class IdeaService:
         try:
             # Fetch signals (Real or Mock)
             try:
-                # Force refresh 30% of the time or if explicitly requested (TODO: add explicit flag)
-                should_refresh = (uuid.uuid4().hex[0] in "0123") # ~25% chance
+                # Force refresh ~6% of the time (1/16) to keep signals fresh but fast
+                should_refresh = (uuid.uuid4().hex[0] == "0") 
                 live_signals = await signal_service.fetch_signals(force_refresh=should_refresh)
             except Exception as e:
                 logger.error(f"Signal fetching failed: {e}")
