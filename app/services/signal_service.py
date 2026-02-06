@@ -14,13 +14,13 @@ class SignalService:
         self._cache_timestamp = 0
         self._cache_ttl = 600 # 10 minutes
 
-    async def fetch_signals(self) -> List[Dict[str, Any]]:
+    async def fetch_signals(self, force_refresh: bool = False) -> List[Dict[str, Any]]:
         """
         Fetch, normalize, and rank signals from SerpApi (Google News) and Hacker News.
         Includes a 10-minute local cache to reduce latency.
         """
         now = time.time()
-        if self._signal_cache and (now - self._cache_timestamp) < self._cache_ttl:
+        if not force_refresh and self._signal_cache and (now - self._cache_timestamp) < self._cache_ttl:
             logger.info("Returning cached signals")
             return self._signal_cache
 

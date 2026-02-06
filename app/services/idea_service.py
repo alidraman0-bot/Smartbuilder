@@ -27,13 +27,15 @@ class IdeaService:
         # --- Pre-flight: Ensure Base Project Exists (Required for FKs) ---
         project_id = "00000000-0000-0000-0000-000000000000"
         try:
-            from app.core.supabase import supabase
-            proj_res = supabase.table("projects").select("project_id").limit(1).execute()
+            from app.core.supabase import get_service_client
+            svc_client = get_service_client()
+            
+            proj_res = svc_client.table("projects").select("project_id").limit(1).execute()
             if not proj_res.data:
                 logger.info("Initializing system with Default Genesis project.")
                 # We use a static UUID for the default project to keep things predictable
                 default_id = str(uuid.uuid4())
-                new_proj = supabase.table("projects").insert({
+                new_proj = svc_client.table("projects").insert({
                     "project_id": default_id,
                     "name": "Default Genesis",
                     "framework": "Next.js",
@@ -48,7 +50,9 @@ class IdeaService:
         try:
             # Fetch signals (Real or Mock)
             try:
-                live_signals = await signal_service.fetch_signals()
+                # Force refresh 30% of the time or if explicitly requested (TODO: add explicit flag)
+                should_refresh = (uuid.uuid4().hex[0] in "0123") # ~25% chance
+                live_signals = await signal_service.fetch_signals(force_refresh=should_refresh)
             except Exception as e:
                 logger.error(f"Signal fetching failed: {e}")
                 live_signals = []
@@ -56,7 +60,22 @@ class IdeaService:
             # Format signals for the prompt
             signals_text = json.dumps(live_signals, indent=2)
 
-            system_prompt = """
+            # INJECT RANDOMNESS: Pick a "Creative Angle" to force diversity
+            import random
+            creative_angles = [
+                "Focus heavily on unsexy, boring B2B niches with high cash flow.",
+                "Prioritize consumer social apps with high viral potential.",
+                "Look for 'unbundling' opportunities of major platforms (e.g. unbundling LinkedIn, Reddit).",
+                "Focus on 'peace technology' and mental wellness tools.",
+                "Target deep-tech, R&D heavy solutions for enterprise."
+                "Focus on blue-collar workforce enablement.",
+                "Look for opportunities in the silver economy (aging population).",
+                "Prioritize privacy-first, local-only software architecture."
+            ]
+            selected_angle = random.choice(creative_angles)
+            logger.info(f"Generating ideas with angle: {selected_angle}")
+
+            system_prompt = f"""
 You are Smartbuilder’s OpenAI-powered Intelligence Engine.
 
 Your role is to perform:
@@ -76,6 +95,9 @@ Your sole responsibility is to THINK.
 
 You must analyze the provided market signals and transform them into
 high-quality, defensible startup ideas.
+
+CREATIVE LENS:
+{selected_angle}
 
 You should reason like:
 - A startup investor
@@ -121,6 +143,7 @@ Each idea must:
 - Be grounded in observable demand or repeated pain
 - Be realistic to validate with a 30-day MVP
 - Avoid generic or overused concepts
+- STRICTLY ADHERE to the 'Creative Lens' specified above.
 
 ---
 
@@ -129,37 +152,37 @@ OUTPUT STRUCTURE (STRICT JSON)
 Return a JSON OBJECT with a key "ideas" containing an array of objects.
 Each object MUST have these exact fields to map to the UI:
 
-{
+{{
   "title": "1. Idea Title (Concise name)",
   "thesis": "2. One-sentence thesis (Concise explanation of the opportunity)",
   "market_size": "3. Market Size Indicator (e.g., 'Large', '$10B+ TAM')",
   "problem_bullets": ["4. 2-3 short bullet points explaining: what is broken, who is affected, how often it happens"],
-  "target_customer": {
+  "target_customer": {{
     "primary_user": "5. Primary user",
     "company_size": "6. Company size",
     "industry_or_role": "7. Industry or role"
-  },
-  "monetization": {
+  }},
+  "monetization": {{
     "pricing_structure": "8. Pricing structure",
     "who_pays": "9. Who pays",
     "value_prop": "10. Why they are willing to pay"
-  },
+  }},
   "why_now_bullets": ["11. 3 bullet points: Market shift, Technology inflection, Behavior change"],
-  "alternatives_structured": {
+  "alternatives_structured": {{
     "today": ["12. What people use today"],
     "gaps": ["13. Why those solutions are insufficient"]
-  },
+  }},
   "mvp_scope_bullets": ["14. 5-7 core feature items"],
   "confidence_reasoning_bullets": ["15. Why Smartbuilder thinks this is strong (Repetition, Signal, Clarity, Feasibility)"],
-  "risks_structured": {
+  "risks_structured": {{
     "adoption": "16. Adoption risk",
     "technical": "17. Technical unknowns",
     "market": "18. Market uncertainty"
-  },
+  }},
   "confidence_score": 0-100 (integer),
   "market_score": 0-100 (integer),
   "execution_complexity": 0-10 (integer)
-}
+}}
 
 ---
 
@@ -181,12 +204,18 @@ Your goal is to produce ideas that feel:
             if settings.AI_PROVIDER == "gemini" or settings.AI_PROVIDER == "google":
                 system_prompt = f"""
 You are a specialized JSON-only Startup Analyst.
-Your task is to analyze market signals and return a JSON object containing 5 startup ideas.
+Your task is to analyze market signals and return a valid JSON object containing 5 startup ideas.
 
 Market Signals Data:
 {signals_text}
 
-JSON SCHEMA REQUIREMENT:
+OUTPUT FORMAT:
+You must return a single valid JSON object.
+Do NOT include any markdown formatting (like ```json ... ```).
+Do NOT include any conversational text intro or outro.
+Just the raw JSON string.
+
+JSON STRUCTURE:
 {{
   "ideas": [
     {{
@@ -208,11 +237,16 @@ JSON SCHEMA REQUIREMENT:
   ]
 }}
 
+TASK CONSTRAINT (CREATIVE LENS):
+{selected_angle}
+Apply this lens strictly to all generated ideas.
+
 STRICT RULES:
-1. Return ONLY the JSON object.
-2. NO conversational text, NO markdown code blocks (unless inside the JSON).
-3. Do NOT start with "Here is your JSON".
-4. Ensure all bullet lists have at least 2 items.
+1. Return ONLY the JSON definition.
+2. NO markdown code blocks.
+3. NO "Here is the JSON" text.
+4. If you include code blocks, the parser will fail.
+REMINDER: JSON ONLY. NO TEXT.
 """
 
 
@@ -227,9 +261,11 @@ A founder has proposed the following idea:
 Using the market signals provided in the system prompt, validate, refine, or reposition this idea.
 If the idea is weak, pivot it towards the strongest relevant signal.
 Generate up to 5 refined variations or pivots.
+
+Respond with valid JSON only.
 """
             else:
-                user_prompt = "Generate 5 high-potential startup ideas based on the market signals provided."
+                user_prompt = "Generate 5 high-potential startup ideas based on the market signals provided. Respond with valid JSON only."
 
             # If no AI keys configured, use high-signal mock generator
             if not settings.has_ai_key:
@@ -244,13 +280,32 @@ Generate up to 5 refined variations or pivots.
                         {"role": "system", "content": system_prompt},
                         {"role": "user", "content": user_prompt}
                     ],
-                    response_format={"type": "json_object"}
+                    response_format={"type": "json_object"},
+                    temperature=0.9
                 )
                 
                 content = response["content"]
+                
+                # Robust JSON Extraction
                 try:
+                    # Generic cleanup
+                    content = content.strip()
+                    # Remove markdown blocks if present
+                    if content.startswith("```"):
+                        content = content.split("```", 1)[1]
+                        if content.startswith("json"):
+                             content = content[4:]
+                        if content.endswith("```"):
+                            content = content[:-3]
+                    
+                    # Find outer braces if there is extra text
+                    start_idx = content.find("{")
+                    end_idx = content.rfind("}")
+                    if start_idx != -1 and end_idx != -1:
+                        content = content[start_idx : end_idx + 1]
+                    
                     data = json.loads(content)
-                except json.JSONDecodeError as je:
+                except Exception as je:
                     logger.error(f"Failed to parse AI response as JSON: {je}. Raw: {content[:200]}")
                     raise Exception("AI returned malformed JSON")
                 
@@ -276,15 +331,24 @@ Generate up to 5 refined variations or pivots.
                         logger.warning(f"Skipping non-dict idea item: {item}")
                         continue
 
-                    # Quality Gates
-                    conf = item.get("confidence_score", 0)
-                    if not isinstance(conf, (int, float)) or conf < 60: 
+                    # Quality Gates - Be more resilient
+                    conf = item.get("confidence_score")
+                    if conf is None:
+                        conf = 85 # Default to high confidence if AI forgets it
+                    
+                    try:
+                        conf = float(conf)
+                    except (ValueError, TypeError):
+                        conf = 85
+
+                    if conf < 60: 
                         logger.warning(f"Idea '{item.get('title')}' rejected: confidence_score {conf} < 60")
                         continue
 
                     # Ensure UUIDs and defaults to prevent FE crashes
                     item["idea_id"] = item.get("idea_id", str(uuid.uuid4()))
                     item["title"] = item.get("title", "Untitled Opportunity")
+                    item["confidence_score"] = int(conf)
                     
                     # Ensure base structure for new fields to prevent FE crashes
                     item["thesis"] = item.get("thesis", "No thesis provided.")
@@ -608,11 +672,17 @@ Generate up to 5 refined variations or pivots.
             }
         ]
         
+        import random
+        random.shuffle(base_ideas)
+        # Return a random subset (3 to 5 ideas) to ensure variety
+        count = random.randint(3, len(base_ideas))
+        selected_ideas = base_ideas[:count]
+        
         # Add IDs
-        for i, idea in enumerate(base_ideas):
+        for i, idea in enumerate(selected_ideas):
             idea["idea_id"] = f"mock-{i}-{uuid.uuid4()}"
 
-        return base_ideas
+        return selected_ideas
 
     def promote_idea(self, idea_id: str) -> Dict[str, Any]:
         """

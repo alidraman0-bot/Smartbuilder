@@ -19,14 +19,16 @@ async def test_discover():
     print(f"Top Idea: {first.get('title')} (Conf: {first.get('confidence_score')})")
     
     # Check schema
-    required = ["idea_id", "title", "problem", "confidence_score", "execution_complexity", "market_signal_evidence", "why_now"]
+    required = ["idea_id", "title", "problem_bullets", "confidence_score", "execution_complexity", "why_now_bullets"]
     for field in required:
         if field not in first:
             print(f"FAIL: Missing field {field}")
             return
     print("PASS: Schema looks correct.")
-    print(f"Evidence: {first.get('market_signal_evidence')[:100]}...")
-    print(f"Why Now: {first.get('why_now')[:100]}...")
+    # print(f"Evidence: {first.get('market_signal_evidence')[:100]}...")
+    why_now = first.get('why_now_bullets', [])
+    why_now_text = why_now[0] if why_now else "N/A"
+    print(f"Why Now: {why_now_text[:100]}...")
 
 async def test_validate():
     print("\n--- Testing VALIDATE Mode ---")
