@@ -228,6 +228,7 @@ CRITICAL RULES:
 5. Output ONLY valid JSON, no markdown formatting
 6. Be specific, quantitative, and actionable
 7. Think like an investor evaluating a pitch deck
+8. JSON ONLY. No Markdown. No ```json blocks.
 """
 
         # Inject data
@@ -388,17 +389,17 @@ print(json.dumps(results))
                     {
                         "region": "North America",
                         "readiness_score": 90,
-                        "works_first": true
+                        "works_first": True
                     },
                     {
                         "region": "Europe",
                         "readiness_score": 70,
-                        "works_first": false
+                        "works_first": False
                     },
                     {
                         "region": "Asia-Pacific",
                         "readiness_score": 60,
-                        "works_first": false
+                        "works_first": False
                     }
                 ],
                 "market_trajectory": "Getting easier - infrastructure costs declining, talent pool growing, customer awareness increasing"
@@ -469,7 +470,7 @@ print(json.dumps(results))
                 },
                 "revenue_lag_timeline": "3-6 months from launch to first recurring revenue",
                 "cost_curve_analysis": "Favorable unit economics - COGS decrease with scale due to AI model efficiency gains",
-                "makes_money_without_fantasy": true
+                "makes_money_without_fantasy": True
             },
             "risks_mitigation": {
                 "risks": [

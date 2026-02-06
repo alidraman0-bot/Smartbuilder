@@ -8,7 +8,7 @@ import os
 import json
 import asyncio
 from typing import Dict, Any, Optional, List
-from e2b_code_interpreter import CodeInterpreter
+from e2b_code_interpreter import Sandbox
 
 logger = logging.getLogger(__name__)
 
@@ -27,13 +27,13 @@ class InterpreterService:
             return self._mock_analysis(code, data)
 
         try:
-            async with CodeInterpreter(api_key=self.api_key) as sandbox:
+            async with Sandbox(api_key=self.api_key) as sandbox:
                 # 1. Inject data into the sandbox as a JSON file
-                await sandbox.filesystem.write("data.json", json.dumps(data))
+                await sandbox.files.write("data.json", json.dumps(data))
                 
                 # 2. Execute the analyst code
                 # The code should expect data.json and print its final result as JSON
-                execution = await sandbox.notebook.exec_cell(code)
+                execution = await sandbox.run_code(code)
                 
                 if execution.error:
                     logger.error(f"E2B Execution Error: {execution.error.name} - {execution.error.value}")

@@ -212,6 +212,7 @@ CRITICAL RULES:
 7. Output ONLY valid JSON, no markdown formatting
 8. Be specific, constrained, and execution-ready
 9. Think "what can ship in 2 weeks" not "what's the vision"
+10. JSON ONLY. No Markdown. No ```json blocks.
 """
 
         # Inject data
