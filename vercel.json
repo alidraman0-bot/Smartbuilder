@@ -1,0 +1,23 @@
+{
+    "version": 2,
+    "builds": [
+        {
+            "src": "app/main.py",
+            "use": "@vercel/python"
+        },
+        {
+            "src": "frontend/package.json",
+            "use": "@vercel/nextjs"
+        }
+    ],
+    "routes": [
+        {
+            "src": "/api/(.*)",
+            "dest": "app/main.py"
+        },
+        {
+            "src": "/(.*)",
+            "dest": "frontend/$1"
+        }
+    ]
+}
