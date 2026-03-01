@@ -4,6 +4,8 @@ Supports OpenAI, Anthropic Claude, and Google Gemini.
 """
 import logging
 import json
+import warnings
+warnings.filterwarnings("ignore", category=FutureWarning, module="google.generativeai")
 from typing import Optional, Dict, Any, List
 from enum import Enum
 
@@ -17,6 +19,7 @@ class AIProvider(str, Enum):
     OPENAI = "openai"
     ANTHROPIC = "anthropic"
     GEMINI = "gemini"
+    DEEPSEEK = "deepseek"
 
 
 class AIClient:
@@ -35,7 +38,7 @@ class AIClient:
     def _initialize_clients(self):
         """Initialize all available AI provider clients."""
         # OpenAI client
-        if settings.OPENAI_API_KEY:
+        if self._is_valid_key(settings.OPENAI_API_KEY):
             try:
                 from openai import AsyncOpenAI
                 self.clients[AIProvider.OPENAI] = AsyncOpenAI(
@@ -47,7 +50,7 @@ class AIClient:
                 logger.warning(f"Failed to initialize OpenAI client: {e}")
         
         # Anthropic client
-        if settings.ANTHROPIC_API_KEY:
+        if self._is_valid_key(settings.ANTHROPIC_API_KEY):
             try:
                 import anthropic
                 self.clients[AIProvider.ANTHROPIC] = anthropic.AsyncAnthropic(
@@ -58,7 +61,7 @@ class AIClient:
                 logger.warning(f"Failed to initialize Anthropic client: {e}")
         
         # Google Gemini client
-        if settings.GOOGLE_API_KEY:
+        if self._is_valid_key(settings.GOOGLE_API_KEY):
             try:
                 import google.generativeai as genai
                 genai.configure(api_key=settings.GOOGLE_API_KEY)
@@ -67,8 +70,32 @@ class AIClient:
             except Exception as e:
                 logger.warning(f"Failed to initialize Gemini client: {e}")
         
+        # DeepSeek client (using OpenAI-compatible SDK)
+        if self._is_valid_key(settings.DEEPSEEK_API_KEY):
+            try:
+                from openai import AsyncOpenAI
+                self.clients[AIProvider.DEEPSEEK] = AsyncOpenAI(
+                    api_key=settings.DEEPSEEK_API_KEY,
+                    base_url=settings.DEEPSEEK_BASE_URL
+                )
+                logger.info("DeepSeek client initialized")
+            except Exception as e:
+                logger.warning(f"Failed to initialize DeepSeek client: {e}")
+        
         if not self.clients:
-            logger.warning("No AI clients initialized. Please configure at least one API key.")
+            logger.warning("No AI clients initialized. Please configure at least one VALID API key.")
+
+    def _is_valid_key(self, key: Optional[str]) -> bool:
+        """Check if an API key is valid and not a placeholder."""
+        if not key:
+            return False
+        key = key.strip()
+        if not key:
+            return False
+        # Check for common placeholders
+        if key.startswith("your_") or "api_key" in key.lower() or key.startswith("sk-proj-...") or len(key) < 10:
+            return False
+        return True
     
     async def chat_completion(
         self,
@@ -121,22 +148,33 @@ class AIClient:
                 logger.warning(f"Provider {provider_name} not available, skipping...")
                 continue
             
+            # Filter out internal kwargs from being passed to SDKs
+            filtered_kwargs = {k: v for k, v in kwargs.items() if k not in ["provider"]}
+
             try:
                 if provider == AIProvider.OPENAI:
                     result = await self._openai_completion(
-                        messages, system_prompt, model, temperature, max_tokens, response_format, **kwargs
+                        messages, system_prompt, model, temperature, max_tokens, response_format, **filtered_kwargs
                     )
                 elif provider == AIProvider.ANTHROPIC:
                     result = await self._anthropic_completion(
-                        messages, system_prompt, model, temperature, max_tokens, **kwargs
+                        messages, system_prompt, model, temperature, max_tokens, response_format, **filtered_kwargs
                     )
                 elif provider == AIProvider.GEMINI:
                     result = await self._gemini_completion(
-                        messages, system_prompt, model, temperature, max_tokens, **kwargs
+                        messages, system_prompt, model, temperature, max_tokens, response_format, **filtered_kwargs
+                    )
+                elif provider == AIProvider.DEEPSEEK:
+                    result = await self._deepseek_completion(
+                        messages, system_prompt, model, temperature, max_tokens, response_format, **filtered_kwargs
                     )
                 else:
                     continue
                 
+                # Extract JSON if requested
+                if response_format and response_format.get("type") == "json_object":
+                    result["content"] = self._extract_json(result["content"])
+
                 result['provider'] = provider_name
                 logger.info(f"Successfully got response from {provider_name}")
                 return result
@@ -144,12 +182,13 @@ class AIClient:
             except Exception as e:
                 last_error = e
                 logger.warning(f"Provider {provider_name} failed: {e}")
+                # Don't disable fallback check here, assuming user wants fallback if enable_fallback is True
                 if not settings.ENABLE_FALLBACK:
-                    raise e
+                     raise e
                 continue
         
         # All providers failed
-        error_msg = f"All AI providers failed. Last exception: {str(last_error) if last_error else 'Unknown error'}"
+        error_msg = f"All AI providers failed. Last exception: {str(last_error) if last_error else 'No active providers available'}"
         logger.error(error_msg)
         raise Exception(error_msg)
     
@@ -236,6 +275,7 @@ class AIClient:
         model: Optional[str],
         temperature: Optional[float],
         max_tokens: Optional[int],
+        response_format: Optional[Dict[str, Any]] = None,
         **kwargs
     ) -> Dict[str, Any]:
         """Get completion from Anthropic Claude."""
@@ -286,6 +326,7 @@ class AIClient:
         model: Optional[str],
         temperature: Optional[float],
         max_tokens: Optional[int],
+        response_format: Optional[Dict[str, Any]] = None,
         **kwargs
     ) -> Dict[str, Any]:
         """Get completion from Google Gemini."""
@@ -299,10 +340,19 @@ class AIClient:
         
         import google.generativeai as genai
         
+        # Prepare safety settings to avoid overly sensitive blocks for market research
+        safety_settings = [
+            {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
+            {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_NONE"},
+            {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_NONE"},
+            {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"},
+        ]
+
         # Use system instruction if provided
         gemini_model = genai.GenerativeModel(
             model_name=model_name,
-            system_instruction=system_prompt if system_prompt else None
+            system_instruction=system_prompt if system_prompt else None,
+            safety_settings=safety_settings
         )
         
         # Build conversation (without system prompt in the user part)
@@ -324,14 +374,17 @@ class AIClient:
         }
         
         # Handle response format for Gemini
-        response_format = kwargs.get("response_format")
         if response_format and response_format.get("type") == "json_object":
             config["response_mime_type"] = "application/json"
             full_prompt += "\n\nIMPORTANT: Return ONLY a valid JSON object. No other text."
             
-        # Add other kwargs
+        # Add other kwargs (filter out internal ones)
+        allowed_config_fields = {
+            "temperature", "max_output_tokens", "top_p", "top_k", 
+            "candidate_count", "stop_sequences", "response_mime_type"
+        }
         for k, v in kwargs.items():
-            if k != "response_format" and k not in config:
+            if k in allowed_config_fields and k not in config:
                 config[k] = v
         
         logger.info(f"Gemini prompt: {full_prompt[:100]}...")
@@ -340,7 +393,7 @@ class AIClient:
             logger.info(f"Gemini system instruction: {system_prompt[:100]}...")
             
         import asyncio
-        # Use synchronous generate_content in a thread
+        # Use synchronous generate_content in a thread with timeout
         def _sync_call():
             try:
                 resp = gemini_model.generate_content(full_prompt, generation_config=config)
@@ -352,8 +405,13 @@ class AIClient:
             except Exception as e:
                 logger.error(f"Gemini generate_content failed: {e}")
                 raise e
-            
-        content = await asyncio.to_thread(_sync_call)
+        
+        try:
+             # Add 60s timeout to prevent hanging forever
+             content = await asyncio.wait_for(asyncio.to_thread(_sync_call), timeout=60.0)
+        except asyncio.TimeoutError:
+             logger.error("Gemini request timed out after 60s")
+             raise Exception("Gemini request timed out")
         
         # Extract JSON if requested
         if response_format and response_format.get("type") == "json_object":
@@ -363,6 +421,49 @@ class AIClient:
             "content": content,
             "model": model_name,
             "usage": None,
+        }
+    
+    async def _deepseek_completion(
+        self,
+        messages: List[Dict[str, str]],
+        system_prompt: Optional[str],
+        model: Optional[str],
+        temperature: Optional[float],
+        max_tokens: Optional[int],
+        response_format: Optional[Dict[str, Any]],
+        **kwargs
+    ) -> Dict[str, Any]:
+        """Get completion from DeepSeek (OpenAI-compatible)."""
+        client = self.clients[AIProvider.DEEPSEEK]
+        
+        # Prepare messages
+        formatted_messages = []
+        if system_prompt:
+            formatted_messages.append({"role": "system", "content": system_prompt})
+        formatted_messages.extend(messages)
+        
+        # Prepare parameters
+        params = {
+            "model": model or settings.DEEPSEEK_MODEL,
+            "messages": formatted_messages,
+            "temperature": temperature if temperature is not None else settings.TEMPERATURE,
+            "max_tokens": max_tokens or settings.MAX_TOKENS,
+            **kwargs
+        }
+        
+        if response_format:
+            params["response_format"] = response_format
+        
+        response = await client.chat.completions.create(**params)
+        
+        return {
+            "content": response.choices[0].message.content,
+            "model": response.model,
+            "usage": {
+                "prompt_tokens": response.usage.prompt_tokens,
+                "completion_tokens": response.usage.completion_tokens,
+                "total_tokens": response.usage.total_tokens,
+            } if hasattr(response, 'usage') and response.usage else None,
         }
 
 

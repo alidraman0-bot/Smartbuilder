@@ -1,0 +1,6 @@
+{
+    "plan": "starter",
+    "email": "test@example.com",
+    "org_id": "test-org-123",
+    "callback_url": "http://localhost:3000"
+}

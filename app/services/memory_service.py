@@ -2,7 +2,7 @@ import datetime
 import uuid
 import logging
 from typing import List, Dict, Any, Optional
-from app.core.supabase import supabase
+from app.core.supabase import get_service_client, get_supabase
 from app.models.memory import MemoryEventBase
 
 logger = logging.getLogger(__name__)
@@ -10,6 +10,11 @@ logger = logging.getLogger(__name__)
 class MemoryService:
     def __init__(self):
         pass
+
+    @property
+    def client(self):
+        """Use service client for backend writes to bypass RLS."""
+        return get_service_client()
 
     async def log_event(self, event: MemoryEventBase) -> Dict[str, Any]:
         """
@@ -21,9 +26,10 @@ class MemoryService:
             if data["artifact_ref_id"]:
                 data["artifact_ref_id"] = str(data["artifact_ref_id"])
             
-            response = supabase.table("memory_events").insert(data).execute()
+            response = self.client.table("memory_events").insert(data).execute()
             if not response.data:
-                logger.warning("Supabase returned empty data for memory event log.")
+                logger.warning(f"Supabase returned empty data for memory event log: {data.get('type')}")
+                # Sometimes insert works but returns nothing if 'select' privilege is missing, but here we are admin.
                 return {}
             return response.data[0]
         except Exception as e:
@@ -35,7 +41,7 @@ class MemoryService:
         Retrieve all memory events for a project, sorted by time.
         """
         try:
-            response = supabase.table("memory_events")\
+            response = self.client.table("memory_events")\
                 .select("*")\
                 .eq("project_id", project_id)\
                 .order("created_at", desc=True)\
@@ -59,7 +65,7 @@ class MemoryService:
                 "content": idea_data,
                 "status": idea_data.get("status", "draft")
             }
-            response = supabase.table("ideas").insert(data).execute()
+            response = self.client.table("ideas").insert(data).execute()
             
             if not response.data:
                 logger.error(f"Failed to save idea to Supabase: No data returned. project_id={project_id}")
@@ -103,7 +109,7 @@ class MemoryService:
             "assumptions": research_data.get("assumptions", []),
             "sources": research_data.get("sources", [])
         }
-        response = supabase.table("research_snapshots").insert(data).execute()
+        response = self.client.table("research_snapshots").insert(data).execute()
         snapshot = response.data[0]
 
         # Log event
@@ -124,7 +130,7 @@ class MemoryService:
         Save a versioned business plan.
         """
         # Determine next version number
-        latest = supabase.table("business_plan_versions")\
+        latest = self.client.table("business_plan_versions")\
             .select("version_number")\
             .eq("project_id", project_id)\
             .order("version_number", desc=True)\
@@ -139,7 +145,7 @@ class MemoryService:
             "content": content,
             "version_number": version_num
         }
-        response = supabase.table("business_plan_versions").insert(data).execute()
+        response = self.client.table("business_plan_versions").insert(data).execute()
         bp_version = response.data[0]
 
         # Log event
@@ -165,7 +171,7 @@ class MemoryService:
             "content": content,
             "status": status
         }
-        response = supabase.table("prd_versions").insert(data).execute()
+        response = self.client.table("prd_versions").insert(data).execute()
         prd_version = response.data[0]
 
         # Log event

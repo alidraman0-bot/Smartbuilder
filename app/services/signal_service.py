@@ -2,7 +2,8 @@ import logging
 import asyncio
 import httpx
 import time
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
+import xml.etree.ElementTree as ET
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)
@@ -16,7 +17,7 @@ class SignalService:
 
     async def fetch_signals(self, force_refresh: bool = False) -> List[Dict[str, Any]]:
         """
-        Fetch, normalize, and rank signals from SerpApi (Google News) and Hacker News.
+        Fetch, normalize, and rank signals from Google News, Hacker News, Reddit, and RSS.
         Includes a 10-minute local cache to reduce latency.
         """
         now = time.time()
@@ -26,14 +27,24 @@ class SignalService:
 
         tasks = []
         
-        # 1. SerpApi (Google News)
+        # 1. Google News (SerpApi)
         if settings.SERPAPI_API_KEY:
             tasks.append(self._fetch_serpapi_signals())
         else:
-            logger.warning("SERPAPI_API_KEY not set. Skipping Google News signals.")
+            logger.warning("SERPAPI_API_KEY not set. Skipping Google News.")
 
         # 2. Hacker News
         tasks.append(self._fetch_hackernews_signals())
+
+        # 3. Reddit
+        if settings.REDDIT_CLIENT_ID and settings.REDDIT_CLIENT_SECRET:
+            tasks.append(self._fetch_reddit_signals())
+        else:
+            logger.warning("Reddit API credentials not set. Using mock Reddit signals.")
+            tasks.append(self._get_mock_reddit_signals())
+
+        # 4. RSS (Indie Signals)
+        tasks.append(self._fetch_rss_signals())
 
         results = await asyncio.gather(*tasks, return_exceptions=True)
         
@@ -44,15 +55,31 @@ class SignalService:
             elif isinstance(res, list):
                 all_signals.extend(res)
 
-        # Fallback to mocks if absolutely no data found (e.g. network error)
-        if not all_signals:
-            logger.warning("No live signals found. Using mocks.")
-            return await self._get_mock_signals()
+        # Signal Normalization Layer (Step 3 in PRD)
+        # For now, we normalize the structure. E2B clustering happens later in the synthesis flow.
+        normalized_signals = self._normalize_signal_objects(all_signals)
 
-        # Deduplication and ranking could happen here
-        self._signal_cache = all_signals[:10]
+        if not normalized_signals:
+            logger.warning("No live signals found. Using fallback mocks.")
+            normalized_signals = await self._get_mock_signals()
+
+        self._signal_cache = normalized_signals[:25] # 15-25 signals max as per PRD
         self._cache_timestamp = time.time()
         return self._signal_cache
+
+    def _normalize_signal_objects(self, signals: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """Ensure all signals match the requested schema for Step 2 of the PRD."""
+        normalized = []
+        for s in signals:
+            normalized.append({
+                "source": s.get("source", "Unknown"),
+                "category": s.get("industry", s.get("category", "General")),
+                "pattern": s.get("pattern", s.get("title", "No pattern identified")),
+                "audience": s.get("audience", "Founders"),
+                "frequency": s.get("frequency", "Medium"),
+                "urgency": s.get("urgency", "Medium")
+            })
+        return normalized
 
     async def _fetch_serpapi_signals(self) -> List[Dict[str, Any]]:
         """Query Google News for startup/market trends via SerpApi."""
@@ -120,7 +147,129 @@ class SignalService:
             return signals
         except Exception as e:
             logger.error(f"Failed to fetch HN signals: {e}")
-            raise
+            return []
+
+    async def _fetch_reddit_signals(self) -> List[Dict[str, Any]]:
+        """
+        Fetch signals from Reddit using OAuth.
+        Target subreddits: startups, Entrepreneur, SaaS, SideProject, AItools
+        """
+        if not settings.REDDIT_CLIENT_ID or not settings.REDDIT_CLIENT_SECRET:
+            logger.info("Reddit credentials missing, using mocks.")
+            return await self._get_mock_reddit_signals()
+
+        subreddits = ["startups", "Entrepreneur", "SaaS", "SideProject", "AItools"]
+        signals = []
+        
+        try:
+            # 1. Get Access Token
+            auth = httpx.BasicAuth(settings.REDDIT_CLIENT_ID, settings.REDDIT_CLIENT_SECRET)
+            data = {"grant_type": "client_credentials"}
+            headers = {"User-Agent": settings.REDDIT_USER_AGENT}
+            
+            token_resp = await self.http_client.post(
+                "https://www.reddit.com/api/v1/access_token",
+                auth=auth,
+                data=data,
+                headers=headers
+            )
+            
+            if token_resp.status_code != 200:
+                logger.error(f"Failed to get Reddit token: {token_resp.text}")
+                return await self._get_mock_reddit_signals()
+                
+            token = token_resp.json().get("access_token")
+            headers["Authorization"] = f"Bearer {token}"
+            
+            # 2. Fetch from subreddits
+            for sub in subreddits:
+                try:
+                    url = f"https://oauth.reddit.com/r/{sub}/top?t=week&limit=5"
+                    resp = await self.http_client.get(url, headers=headers)
+                    if resp.status_code == 200:
+                        posts = resp.json().get("data", {}).get("children", [])
+                        for post in posts:
+                            data = post.get("data", {})
+                            signals.append({
+                                "source": f"Reddit (r/{sub})",
+                                "category": sub,
+                                "pattern": f"{data.get('title')}: {data.get('selftext', '')[:200]}...",
+                                "audience": "Early Adopters / Founders",
+                                "frequency": "High" if data.get("ups", 0) > 100 else "Medium",
+                                "urgency": "High" if "help" in data.get("title", "").lower() or "struggle" in data.get("selftext", "").lower() else "Medium"
+                            })
+                except Exception as sub_e:
+                    logger.error(f"Failed to fetch r/{sub}: {sub_e}")
+                    
+            return signals if signals else await self._get_mock_reddit_signals()
+            
+        except Exception as e:
+            logger.error(f"Reddit API error: {e}")
+            return await self._get_mock_reddit_signals()
+
+    async def _fetch_rss_signals(self) -> List[Dict[str, Any]]:
+        """Fetch and parse RSS feeds for Product Hunt and Indie Hackers."""
+        feeds = [
+            ("Product Hunt", settings.PRODUCT_HUNT_RSS_URL),
+            ("Indie Hackers", settings.INDIE_HACKERS_RSS_URL)
+        ]
+        signals = []
+        
+        for name, url in feeds:
+            try:
+                resp = await self.http_client.get(url)
+                if resp.status_code == 200:
+                    root = ET.fromstring(resp.text)
+                    # Handle both RSS 2.0 and Atom
+                    items = root.findall(".//item") or root.findall(".//{http://www.w3.org/2005/Atom}entry")
+                    for item in items[:5]:
+                        title = item.find("title") or item.find("{http://www.w3.org/2005/Atom}title")
+                        summary = item.find("description") or item.find("{http://www.w3.org/2005/Atom}summary")
+                        
+                        title_text = title.text if title is not None else "Untitled"
+                        summary_text = summary.text if summary is not None else ""
+                        
+                        signals.append({
+                            "source": name,
+                            "pattern": f"{title_text}: {summary_text[:200]}...",
+                            "audience": "Builders & Early Adopters",
+                            "industry": "Tech / SaaS",
+                            "frequency": "High",
+                            "urgency": "Medium"
+                        })
+            except Exception as e:
+                logger.error(f"Failed to fetch {name} RSS: {e}")
+                
+        return signals
+
+    async def _get_mock_reddit_signals(self) -> List[Dict[str, Any]]:
+        """Simulated 'Real Pain' signals from Reddit as per PRD specs."""
+        return [
+            {
+                "source": "Reddit (r/startups)",
+                "category": "SaaS",
+                "pattern": "B2B SaaS founders struggling with churn due to poor customer onboarding automation",
+                "audience": "SaaS Founders",
+                "frequency": "High",
+                "urgency": "High"
+            },
+            {
+                "source": "Reddit (r/Entrepreneur)",
+                "category": "SMB",
+                "pattern": "Small businesses finding it hard to navigate new local tax compliance regulations manually",
+                "audience": "SMB Owners",
+                "frequency": "Medium",
+                "urgency": "High"
+            },
+            {
+                "source": "Reddit (r/SaaS)",
+                "category": "DevTools",
+                "pattern": "Developers complaining about the complexity of managing multi-tenant database migrations",
+                "audience": "Backend Engineers",
+                "frequency": "High",
+                "urgency": "Medium"
+            }
+        ]
 
     async def fetch_market_data(self, idea: Dict[str, Any]) -> Dict[str, Any]:
         """

@@ -1,8 +1,6 @@
 import logging
 import json
 from typing import Dict, Any, List
-from openai import AsyncOpenAI
-from app.core.config import settings
 from app.agents.base import BaseAgent
 from app.models.schemas import ResearchOutput, MarketSize, CompetitionEntry
 
@@ -11,7 +9,6 @@ logger = logging.getLogger(__name__)
 class ResearchAgent(BaseAgent):
     def __init__(self):
         super().__init__(name="Research Agent")
-        self.client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
 
     async def execute(self, context: Dict[str, Any]) -> Dict[str, Any]:
         """

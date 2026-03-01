@@ -201,7 +201,7 @@ function HeroAnimation() {
                                     <motion.div
                                         key={i}
                                         initial={{ width: 0, opacity: 0 }}
-                                        animate={{ width: `${Math.random() * 60 + 20}%`, opacity: 1 }}
+                                        animate={{ width: `${20 + ((i * 17) % 61)}%`, opacity: 1 }}
                                         transition={{ delay: i * 0.05, duration: 0.5 }}
                                         className={`h-1.5 rounded-full ${i % 3 === 0 ? 'bg-indigo-500/40' : i % 2 === 0 ? 'bg-purple-500/40' : 'bg-zinc-700/40'}`}
                                     />

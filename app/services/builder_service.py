@@ -2,13 +2,13 @@ import logging
 import json
 from typing import List, Dict, Any, Optional
 from app.core.config import settings
-from openai import AsyncOpenAI
+from app.core.ai_client import get_ai_client
 
 logger = logging.getLogger(__name__)
 
 class BuilderService:
     def __init__(self):
-        self.client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
+        self.ai_client = get_ai_client()
         self.data_store: Dict[str, Dict[str, Any]] = {}
 
     async def generate_business_plan(self, idea: Dict[str, Any], research: Dict[str, Any]) -> Dict[str, Any]:
@@ -44,12 +44,12 @@ class BuilderService:
         """
 
         try:
-            response = await self.client.chat.completions.create(
-                model=settings.MODEL_NAME,
-                messages=[{"role": "system", "content": "You are a senior product strategist."}, {"role": "user", "content": prompt}],
+            response = await self.ai_client.chat_completion(
+                messages=[{"role": "user", "content": prompt}],
+                system_prompt="You are a senior product strategist.",
                 response_format={"type": "json_object"}
             )
-            return json.loads(response.choices[0].message.content)
+            return json.loads(response["content"])
         except Exception as e:
             logger.error(f"BP Generation error: {e}")
             return self._get_mock_business_plan(idea)
@@ -58,7 +58,7 @@ class BuilderService:
         """
         Convert a business plan into an engineering-ready PRD.
         """
-        if not settings.OPENAI_API_KEY:
+        if not self.ai_client.has_provider(settings.AI_PROVIDER) and not settings.OPENAI_API_KEY:
             return self._get_mock_prd(idea)
 
         prompt = f"""
@@ -85,12 +85,12 @@ class BuilderService:
         """
 
         try:
-            response = await self.client.chat.completions.create(
-                model=settings.MODEL_NAME,
-                messages=[{"role": "system", "content": "You are a senior technical product manager."}, {"role": "user", "content": prompt}],
+            response = await self.ai_client.chat_completion(
+                messages=[{"role": "user", "content": prompt}],
+                system_prompt="You are a senior technical product manager.",
                 response_format={"type": "json_object"}
             )
-            return json.loads(response.choices[0].message.content)
+            return json.loads(response["content"])
         except Exception as e:
             logger.error(f"PRD Generation error: {e}")
             return self._get_mock_prd(idea)

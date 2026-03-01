@@ -20,15 +20,37 @@ class RollbackRequest(BaseModel):
 async def start_deployment(request: DeploymentRequest):
     """
     Initiate deployment from completed build.
-    
-    Prerequisites:
-    - Build must be in COMPLETE status
-    - Build artifacts must be available
-    
-    Returns:
-        Deployment metadata and initial status
+    Requires Pro plan+
     """
-    # Validate build exists and is complete
+    # 1. Identify Org
+    from app.core.supabase import get_service_client
+    svc_client = get_service_client()
+    
+    proj_res = svc_client.table("projects")\
+        .select("owner_id")\
+        .eq("project_id", request.run_id)\
+        .single()\
+        .execute()
+    
+    org_id = None
+    if proj_res.data and proj_res.data.get("owner_id"):
+        owner_id = proj_res.data["owner_id"]
+        org_res = svc_client.table("team_members")\
+            .select("org_id")\
+            .eq("user_id", owner_id)\
+            .limit(1)\
+            .execute()
+        if org_res.data:
+            org_id = org_res.data[0]["org_id"]
+    
+    if not org_id:
+         org_id = "00000000-0000-0000-0000-000000000000"
+
+    # 2. Enforce Gating
+    from app.services.billing_service import billing_service
+    billing_service.require_feature_access(org_id, "deployment")
+
+    # 3. Validate build exists and is complete
     build = mvp_service.get_build_status(request.run_id)
     if not build:
         raise HTTPException(status_code=404, detail="Build not found")

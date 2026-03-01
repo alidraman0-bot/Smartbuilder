@@ -1,7 +1,9 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
 from typing import Optional, Dict, Any
 from app.services.fsm_service import fsm_service
+from app.api.deps import get_current_user
+from uuid import UUID
 
 router = APIRouter()
 
@@ -12,8 +14,12 @@ class ApprovalRequest(BaseModel):
     action: str # build | deploy
 
 @router.post("/start")
-async def start_run(request: StartRunRequest):
-    result = await fsm_service.start_new_run(request.opportunity)
+async def start_run(
+    request: StartRunRequest,
+    current_user: dict = Depends(get_current_user)
+):
+    user_id = UUID(current_user["id"]) if "id" in current_user else None
+    result = await fsm_service.start_new_run(request.opportunity, user_id=user_id)
     if isinstance(result, str) and "Failed" in result:
         raise HTTPException(status_code=400, detail=result)
     return result

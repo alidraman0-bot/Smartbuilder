@@ -5,12 +5,20 @@ import { usePathname } from 'next/navigation';
 import { useRunStore } from '@/store/useRunStore';
 import Sidebar from './Sidebar';
 import TopBar from './TopBar';
+import AICoFounderPanel from './builder/AICoFounderPanel';
+import { X } from 'lucide-react';
 
 export default function DashboardWrapper({ children }: { children: React.ReactNode }) {
     const startPolling = useRunStore((state) => state.startPolling);
     const runState = useRunStore((state) => state.state);
+    const isAiCofounderOpen = useRunStore((state) => state.isAiCofounderOpen);
+    const toggleAiCofounder = useRunStore((state) => state.toggleAiCofounder);
+    const runId = useRunStore((state) => state.runId);
+
     const pathname = usePathname();
-    const isLandingPage = pathname === '/' || pathname === '/product' || pathname === '/how-it-works' || pathname === '/pricing' || pathname === '/resources' || pathname === '/login' || pathname === '/signup';
+    const isLandingPage = ['/', '/product', '/how-it-works', '/pricing', '/resources', '/login', '/signup', '/mvp'].some(p =>
+        p === '/' ? pathname === '/' : pathname === p || pathname?.startsWith(p + '/')
+    );
 
     useEffect(() => {
         if (!isLandingPage) {
@@ -21,9 +29,6 @@ export default function DashboardWrapper({ children }: { children: React.ReactNo
     if (isLandingPage) {
         return (
             <div className="min-h-screen w-full bg-black text-white relative selection:bg-indigo-500/30">
-                {/* Premium Noise Overlay */}
-                <div className="noise-overlay" />
-
                 {/* Content */}
                 <main className="relative z-10 w-full">
                     {children}
@@ -63,7 +68,26 @@ export default function DashboardWrapper({ children }: { children: React.ReactNo
                     </div>
                 </main>
             </div>
+
+            {/* Global AI Co-Founder Side Panel */}
+            <div className={`fixed inset-y-0 right-0 w-[400px] z-50 transition-transform duration-500 ease-in-out transform shadow-2xl ${isAiCofounderOpen ? 'translate-x-0' : 'translate-x-full'}`}>
+                {/* Close Button overlay */}
+                <button
+                    onClick={() => toggleAiCofounder(false)}
+                    className="absolute -left-12 top-6 w-10 h-10 bg-black/50 backdrop-blur-md rounded-full flex items-center justify-center border border-white/10 text-white hover:bg-white/10 transition-all"
+                >
+                    <X size={20} />
+                </button>
+                <AICoFounderPanel projectId={runId} />
+            </div>
+
+            {/* Backdrop for mobile or global focus */}
+            {isAiCofounderOpen && (
+                <div
+                    className="fixed inset-0 bg-black/20 backdrop-blur-sm z-40 lg:hidden"
+                    onClick={() => toggleAiCofounder(false)}
+                />
+            )}
         </div>
     );
 }
-

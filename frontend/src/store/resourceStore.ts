@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { Resource, IntelligenceData } from '@/types/resources';
+import { getAuthHeaders } from '@/utils/supabase/auth';
 
 interface ResourceState {
     resources: Resource[];
@@ -29,8 +30,11 @@ export const useResourceStore = create<ResourceState>((set, get) => ({
     fetchResources: async (stage?: string) => {
         set({ isLoading: true, error: null });
         try {
+            const headers = await getAuthHeaders();
             const query = stage ? `?stage=${stage}` : '';
-            const response = await fetch(`${API_BASE_URL}/${query}`);
+            const response = await fetch(`${API_BASE_URL}/${query}`, {
+                headers
+            });
             if (!response.ok) throw new Error('Failed to fetch resources');
             const data = await response.json();
             set({ resources: data });
@@ -43,7 +47,10 @@ export const useResourceStore = create<ResourceState>((set, get) => ({
 
     fetchIntelligence: async () => {
         try {
-            const response = await fetch(`${API_BASE_URL}/intelligence`);
+            const headers = await getAuthHeaders();
+            const response = await fetch(`${API_BASE_URL}/intelligence`, {
+                headers
+            });
             if (!response.ok) throw new Error('Failed to fetch intelligence');
             const data = await response.json();
             set({ intelligence: data });
@@ -55,10 +62,12 @@ export const useResourceStore = create<ResourceState>((set, get) => ({
     applyResource: async (resourceId: string) => {
         set({ isLoading: true });
         try {
+            const headers = await getAuthHeaders();
             // In a real app we'd get the actual project ID
             const projectId = "proj-123";
             const response = await fetch(`${API_BASE_URL}/${resourceId}/apply?project_id=${projectId}`, {
-                method: 'POST'
+                method: 'POST',
+                headers
             });
             if (!response.ok) throw new Error('Failed to apply resource');
 
@@ -77,3 +86,4 @@ export const useResourceStore = create<ResourceState>((set, get) => ({
         get().fetchResources(stage || undefined);
     }
 }));
+

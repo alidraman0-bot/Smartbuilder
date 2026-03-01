@@ -24,15 +24,15 @@ export default function ExplicitNonGoals({ data }: ExplicitNonGoalsProps) {
 
             {/* Enforcement Enabled Badge */}
             <div className="flex items-center gap-2">
-                <div className={`w-2 h-2 rounded-full ${data.enforcement_enabled ? 'bg-emerald-500' : 'bg-gray-500'}`} />
+                <div className={`w-2 h-2 rounded-full ${data?.enforcement_enabled ? 'bg-emerald-500' : 'bg-gray-500'}`} />
                 <span className="text-[10px] font-bold uppercase tracking-widest text-gray-500">
-                    Scope Enforcement: {data.enforcement_enabled ? 'Active' : 'Disabled'}
+                    Scope Enforcement: {data?.enforcement_enabled ? 'Active' : 'Disabled'}
                 </span>
             </div>
 
             {/* Non-Goals List */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {data.non_goals.map((goal, index) => (
+                {(data?.non_goals || []).map((goal, index) => (
                     <div
                         key={index}
                         className="bg-[#18181b] border border-[#27272a] rounded-xl p-5 hover:border-red-500/20 transition-all flex items-start gap-4"
@@ -45,6 +45,11 @@ export default function ExplicitNonGoals({ data }: ExplicitNonGoalsProps) {
                         </p>
                     </div>
                 ))}
+                {(!data?.non_goals || data.non_goals.length === 0) && (
+                    <div className="md:col-span-2 text-center py-8 text-gray-500 text-sm border border-dashed border-[#27272a] rounded-xl">
+                        No non-goals defined.
+                    </div>
+                )}
             </div>
         </div>
     );

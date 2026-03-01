@@ -1,8 +1,6 @@
 import logging
 import json
 from typing import Dict, Any, List
-from openai import AsyncOpenAI
-from app.core.config import settings
 from app.agents.base import BaseAgent
 from app.models.schemas import BusinessPlanPRDOutput, BP_BusinessPlan, BP_PRD, PRD_Feature
 
@@ -11,7 +9,6 @@ logger = logging.getLogger(__name__)
 class BusinessPlanPRDAgent(BaseAgent):
     def __init__(self):
         super().__init__(name="Business Plan & PRD Agent")
-        self.client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
 
     async def execute(self, context: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -44,37 +41,32 @@ class BusinessPlanPRDAgent(BaseAgent):
             )
             prd = prd_res.get("prd")
 
+            # Extract confidence score from the nested structure
+            confidence = 90.0
+            if business_plan and "investment_verdict" in business_plan:
+                confidence = business_plan["investment_verdict"].get("confidence", 90.0)
+
             return {
                 "business_plan": business_plan,
                 "prd": prd,
-                "confidence_score": bp_res.get("business_plan", {}).get("investment_verdict", {}).get("confidence", 90.0)
+                "confidence_score": confidence
             }
 
         except Exception as e:
             logger.error(f"BP & PRD Agent error: {e}")
-            return self._get_mock_bp_prd(validated_idea)
+            return self._get_mock_bp_prd(validated_idea, research_summary)
 
-        except Exception as e:
-            logger.error(f"BP & PRD Agent error: {e}")
-            return self._get_mock_bp_prd(validated_idea)
-
-    def _get_mock_bp_prd(self, idea: Dict[str, Any]) -> Dict[str, Any]:
+    def _get_mock_bp_prd(self, idea: Dict[str, Any], research: Dict[str, Any]) -> Dict[str, Any]:
+        from app.services.business_plan_service import business_plan_service
+        from app.services.prd_service import prd_service
+        
+        bp = business_plan_service._get_mock_business_plan(idea, research)
+        prd = prd_service._get_mock_prd(idea, bp)
+        
         return {
-            "business_plan": {
-                "value_proposition": f"Premium AI-driven {idea.get('title')} optimization.",
-                "target_customer": idea.get("target_user", "Founders"),
-                "pricing_model": "SaaS Subscription",
-                "go_to_market": "Product Hunt + Social Media",
-                "success_metrics": ["MRR", "Churn Rate"]
-            },
-            "prd": {
-                "core_features": [
-                    { "feature_id": "core-1", "description": "AI Dashboard" },
-                    { "feature_id": "core-2", "description": "Automated Reports" }
-                ],
-                "non_goals": ["Mobile App", "Multi-language support"]
-            },
-            "confidence_score": 90.0
+            "business_plan": bp,
+            "prd": prd,
+            "confidence_score": bp.get("investment_verdict", {}).get("confidence", 90.0)
         }
 
     def _get_system_prompt(self) -> str:

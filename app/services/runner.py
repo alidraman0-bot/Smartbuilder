@@ -7,6 +7,7 @@ from app.agents.prd import PRDAgent
 import logging
 from app.services.research_service import research_service
 from app.services.builder_service import builder_service
+from app.services.blueprint_service import BlueprintService
 
 logger = logging.getLogger(__name__)
 
@@ -97,6 +98,19 @@ class Runner:
         
         self.orchestrator.log_event("RUNNER", "Phase 1 Complete. Awaiting human approval for Build.", "success")
         
+        # 4. Auto-generate Blueprint
+        try:
+            blueprint_service = BlueprintService()
+            await blueprint_service.generate_blueprint(
+                idea=selected_idea.get('title', opportunity),
+                research=research_out,
+                prd=self.orchestrator.context.get("business_plan_prd", {}).get("prd"),
+                project_id=self.orchestrator.project_id
+            )
+            self.orchestrator.log_event("BLUEPRINT", "Startup Blueprint auto-generated.", "success")
+        except Exception as e:
+            logger.error(f"Failed to auto-generate blueprint: {e}")
+
         return {
             "status": "SUCCESS",
             "run_id": self.orchestrator.run_id,

@@ -4,7 +4,7 @@ import uuid
 import json
 from typing import List, Dict, Any, Optional
 from app.core.config import settings
-from openai import AsyncOpenAI
+from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 

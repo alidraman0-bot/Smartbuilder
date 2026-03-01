@@ -1,26 +1,31 @@
 import asyncio
-import os
-import sys
+import httpx
+import json
 
-# Add the project root to sys.path to allow imports from app
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), ".")))
-
-async def reproduce():
-    print("Initializing IdeaService...")
+async def trigger_generation():
+    url = "http://localhost:8000/api/v1/builder/business-plan"
+    data = {
+        "idea": {
+            "idea_id": "test-idea-123",
+            "title": "Test AI App",
+            "target_user": "Small Businesses",
+            "market_category": "Automation"
+        },
+        "research": {
+            "modules": [{"module": "Market", "summary": "Growth market"}],
+            "confidence_score": 85
+        },
+        "run_id": "test-run-reproduction"
+    }
+    
+    print(f"Triggering generation at {url}...")
     try:
-        from app.services.idea_service import idea_service
-        print("IdeaService initialized.")
-        
-        print("Calling generate_ideas(mode='discover')...")
-        ideas = await idea_service.generate_ideas(mode="discover")
-        print(f"Success! Generated {len(ideas)} ideas.")
-        for i, idea in enumerate(ideas):
-            print(f"{i+1}. {idea.get('title')}")
-            
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            response = await client.post(url, json=data)
+            print(f"Status Code: {response.status_code}")
+            print(f"Response: {response.text}")
     except Exception as e:
-        print(f"\n[ERROR] Reproduction failed with: {e}")
-        import traceback
-        traceback.print_exc()
+        print(f"Request failed: {e}")
 
 if __name__ == "__main__":
-    asyncio.run(reproduce())
+    asyncio.run(trigger_generation())

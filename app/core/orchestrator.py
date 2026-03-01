@@ -5,6 +5,7 @@ from typing import Dict, Any, Optional, List
 from app.models.state import SystemState
 from app.models.schemas import StateRecord
 from app.services.validator import ValidationService
+from fastapi.encoders import jsonable_encoder
 
 # Import New Agents
 from app.agents.opportunity import OpportunityAgent
@@ -23,6 +24,7 @@ class Orchestrator:
         self.logs: List[Dict[str, str]] = []
         self.start_time = time.time()
         self.run_id = f"AG-{int(self.start_time)}-MVP"
+        self.project_id: Optional[str] = None
         
         # Initialize Agents
         self.agents = {
@@ -181,9 +183,47 @@ class Orchestrator:
         self.state = new_state
         self._record_transition(prev_state, new_state, error)
         self.log_event("ORCHESTRATOR", f"CURRENT STATE: {new_state.name}", "success")
+        
+        # Sync with Database (startup_projects table)
+        if self.project_id:
+            try:
+                from app.services.startup_service import StartupService
+                from uuid import UUID
+                service = StartupService()
+                
+                # Map SystemState to Database Stages
+                # Database expects: 'IDEA', 'RESEARCH', 'PRD', 'MVP', 'LAUNCH', 'MONITORING'
+                stage_map = {
+                    SystemState.IDEA_GENERATION: 'IDEA',
+                    SystemState.RESEARCH: 'RESEARCH',
+                    SystemState.BUSINESS_PLAN_PRD: 'PRD',
+                    SystemState.MVP_BUILD: 'MVP',
+                    SystemState.DEPLOYMENT: 'LAUNCH',
+                    SystemState.MONITORING: 'MONITORING'
+                }
+                
+                db_stage = stage_map.get(new_state)
+                if db_stage:
+                    service.update_project_stage(UUID(self.project_id), db_stage)
+                    self.log_event("DATABASE", f"Project {self.project_id} stage updated to {db_stage}", "info")
+            except Exception as e:
+                logger.error(f"Failed to sync stage to database: {e}")
+
         return True
 
     def get_full_status(self) -> Dict[str, Any]:
+        try:
+            return self._get_full_status_impl()
+        except Exception as e:
+            import traceback
+            error_msg = f"ERROR in get_full_status: {str(e)}\n{traceback.format_exc()}"
+            logger.error(error_msg)
+            # Write to a dedicated debug file
+            with open("status_error.log", "a") as f:
+                f.write(f"\n--- {time.ctime()} ---\n{error_msg}\n")
+            raise
+
+    def _get_full_status_impl(self) -> Dict[str, Any]:
         mapping = [
             {"id": "IDLE", "label": "System Idle", "state": SystemState.IDLE},
             {"id": "IDEA", "label": "Idea Generation", "state": SystemState.IDEA_GENERATION},
@@ -241,7 +281,7 @@ class Orchestrator:
         if self.context.get("idea"):
             research_ui["idea"] = self.context.get("idea")
 
-        return {
+        return jsonable_encoder({
             "runId": self.run_id,
             "state": self.state.name,
             "confidence": round(self.calculate_final_confidence(), 1),
@@ -254,4 +294,4 @@ class Orchestrator:
             "business_plan": self.context.get("business_plan_prd", {}).get("business_plan"),
             "prd": self.context.get("business_plan_prd", {}).get("prd"),
             "history": [r.dict() for r in self.history]
-        }
+        })

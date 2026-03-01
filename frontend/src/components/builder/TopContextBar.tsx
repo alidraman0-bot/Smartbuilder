@@ -16,6 +16,9 @@ import {
     Monitor, Database, Cpu, ChevronDown
 } from 'lucide-react';
 import { useMvpBuilderStore, BuildMode, BuilderState } from '@/store/useMvpBuilderStore';
+import { useBillingStore } from '@/store/useBillingStore';
+import { hasFeature } from '@/utils/feature-gating';
+import PaywallModal from '@/components/billing/PaywallModal';
 
 export default function TopContextBar() {
     const {
@@ -23,7 +26,23 @@ export default function TopContextBar() {
         buildVersion, freeze
     } = useMvpBuilderStore();
 
+    const { subscription, fetchSubscription } = useBillingStore();
+    const [showPaywall, setShowPaywall] = React.useState(false);
+
+    React.useEffect(() => {
+        fetchSubscription('demo-org-id');
+    }, [fetchSubscription]);
+
     const isFrozen = uiState === 'S6';
+
+    const handleFreezeClick = () => {
+        const currentPlan = subscription?.plan || 'free';
+        if (!hasFeature(currentPlan, 'freeze_build')) {
+            setShowPaywall(true);
+            return;
+        }
+        freeze();
+    };
 
     return (
         <div className="h-14 bg-[#0a0a0f] border-b border-[#27272a] shadow-md flex items-center justify-between px-4 z-50 select-none">
@@ -43,8 +62,8 @@ export default function TopContextBar() {
 
                 {/* Status Pill */}
                 <div className={`flex items-center space-x-1.5 px-2.5 py-1 rounded-full border text-[10px] uppercase font-bold tracking-wide ${isFrozen
-                        ? 'bg-zinc-900 border-zinc-700 text-zinc-400'
-                        : 'bg-emerald-500/10 border-emerald-500/30 text-emerald-500'
+                    ? 'bg-zinc-900 border-zinc-700 text-zinc-400'
+                    : 'bg-emerald-500/10 border-emerald-500/30 text-emerald-500'
                     }`}>
                     {isFrozen ? <Lock size={10} /> : <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />}
                     <span>{isFrozen ? 'Frozen' : 'Stable'}</span>
@@ -98,7 +117,7 @@ export default function TopContextBar() {
 
                 {!isFrozen && (
                     <button
-                        onClick={freeze}
+                        onClick={handleFreezeClick}
                         className="ml-2 flex items-center space-x-2 bg-zinc-800 hover:bg-zinc-700 text-white text-xs font-medium px-3 py-1.5 rounded-lg border border-zinc-700 transition-all"
                     >
                         <Lock size={12} />
@@ -106,6 +125,14 @@ export default function TopContextBar() {
                     </button>
                 )}
             </div>
+
+            {/* PAYWALL MODAL */}
+            {showPaywall && (
+                <PaywallModal
+                    feature="freeze_build"
+                    onClose={() => setShowPaywall(false)}
+                />
+            )}
         </div>
     );
 }
@@ -116,8 +143,8 @@ function ModeTab({ mode, icon, active, onClick, disabled }: any) {
             onClick={onClick}
             disabled={disabled}
             className={`flex items-center space-x-2 px-6 py-1.5 rounded-md text-xs font-medium transition-all duration-200 ${active
-                    ? 'bg-gradient-to-r from-indigo-500 to-purple-600 text-white shadow-lg shadow-indigo-500/20'
-                    : 'text-zinc-500 hover:text-zinc-300 hover:bg-white/5 disabled:opacity-50'
+                ? 'bg-gradient-to-r from-indigo-500 to-purple-600 text-white shadow-lg shadow-indigo-500/20'
+                : 'text-zinc-500 hover:text-zinc-300 hover:bg-white/5 disabled:opacity-50'
                 }`}
         >
             {icon}

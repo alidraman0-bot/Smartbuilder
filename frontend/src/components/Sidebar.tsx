@@ -5,7 +5,8 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
     LayoutDashboard, Lightbulb, Search, Code, Rocket,
-    Layers, Lock, Share2, Activity, Sparkles, Zap, TrendingUp, Library, History
+    Layers, Lock, Share2, Activity, Sparkles, Zap, TrendingUp, Library, History, CreditCard,
+    FileSpreadsheet, Trophy
 } from 'lucide-react';
 
 const Sidebar = ({ currentStage = "MVP_BUILD" }: { currentStage?: string }) => {
@@ -55,6 +56,45 @@ const Sidebar = ({ currentStage = "MVP_BUILD" }: { currentStage?: string }) => {
                         isActive={pathname === '/memory'}
                         badge={null}
                     />
+                    <NavLink
+                        href="/blueprint"
+                        icon={<FileSpreadsheet size={18} />}
+                        label="Startup Blueprint"
+                        isActive={pathname === '/blueprint'}
+                        badge={null}
+                        color="indigo"
+                    />
+                    <NavLink
+                        href="/opportunity"
+                        icon={<Trophy size={18} />}
+                        label="Opportunity Engine"
+                        isActive={pathname === '/opportunity'}
+                        badge={null}
+                        color="amber"
+                    />
+                    <button
+                        onClick={() => useRunStore.getState().toggleAiCofounder()}
+                        className={`w-full relative flex items-center justify-between px-3 py-2.5 rounded-xl transition-all duration-300 group ${useRunStore.getState().isAiCofounderOpen
+                            ? 'bg-indigo-500/10 border-indigo-500/30 border text-white shadow-lg shadow-indigo-500/20'
+                            : 'text-zinc-400 hover:text-white hover:bg-white/5 border border-transparent'
+                            }`}
+                    >
+                        <div className="flex items-center space-x-3 flex-1">
+                            <div className={`transition-transform duration-300 ${useRunStore.getState().isAiCofounderOpen ? 'scale-110' : 'group-hover:scale-105'}`}>
+                                <Sparkles
+                                    size={18}
+                                    className={useRunStore.getState().isAiCofounderOpen ? 'text-indigo-400' : 'text-zinc-500 group-hover:text-zinc-300'}
+                                    strokeWidth={useRunStore.getState().isAiCofounderOpen ? 2.5 : 2}
+                                />
+                            </div>
+                            <span className={`text-sm font-medium transition-colors ${useRunStore.getState().isAiCofounderOpen ? 'font-semibold' : 'font-medium'}`}>
+                                AI Co-Founder
+                            </span>
+                        </div>
+                        {useRunStore.getState().isAiCofounderOpen && (
+                            <div className="w-2 h-2 rounded-full bg-indigo-500 animate-pulse shadow-lg shadow-indigo-500/50" />
+                        )}
+                    </button>
                 </section>
 
                 {/* Pipeline Lifecycle Section */}
@@ -97,7 +137,7 @@ const Sidebar = ({ currentStage = "MVP_BUILD" }: { currentStage?: string }) => {
                             <NavLink
                                 href="/builder"
                                 icon={<Code size={18} />}
-                                label="Blueprint"
+                                label="Business Plan & PRD"
                                 step="03"
                                 isActive={(currentStage === 'BUSINESS_PLAN' || currentStage === 'PRD') || pathname === '/builder'}
                                 color="indigo"
@@ -150,6 +190,12 @@ const Sidebar = ({ currentStage = "MVP_BUILD" }: { currentStage?: string }) => {
                         icon={<Lock size={18} />}
                         label="System Preference"
                         isActive={pathname === '/settings'}
+                    />
+                    <NavLink
+                        href="/billing"
+                        icon={<CreditCard size={18} />}
+                        label="Billing & Plan"
+                        isActive={pathname === '/billing'}
                     />
                 </section>
             </nav>

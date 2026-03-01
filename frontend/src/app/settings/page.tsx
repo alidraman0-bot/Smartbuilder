@@ -8,6 +8,9 @@ import {
   Clock, Database, Zap, Layout
 } from 'lucide-react';
 import { usePreferenceStore } from '@/store/usePreferenceStore';
+import { useBillingStore } from '@/store/useBillingStore';
+import { hasFeature, type FeatureKey } from '@/utils/feature-gating';
+import PaywallModal from '@/components/billing/PaywallModal';
 
 // Default values as per spec
 const DEFAULT_PREFERENCES = {
@@ -61,6 +64,14 @@ export default function SettingsPage() {
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [localPrefs, setLocalPrefs] = useState<any>(null);
   const [message, setMessage] = useState<{ type: 'success' | 'error' | 'info'; text: string } | null>(null);
+  const [showPaywall, setShowPaywall] = useState(false);
+  const [paywallFeature, setPaywallFeature] = useState<FeatureKey>('api_access');
+
+  const { subscription, fetchSubscription } = useBillingStore();
+
+  useEffect(() => {
+    fetchSubscription('demo-org-id');
+  }, [fetchSubscription]);
 
   // For API Keys (existing functionality)
   const [apiKeys, setApiKeys] = useState({
@@ -81,6 +92,15 @@ export default function SettingsPage() {
   }, [preferences]);
 
   const handleUpdatePreference = (key: string, value: any) => {
+    // Feature Gating: API Access requires Team plan
+    if (key === 'api_access' && value === true) {
+      const currentPlan = subscription?.plan || 'free';
+      if (!hasFeature(currentPlan, 'api_access')) {
+        setPaywallFeature('api_access');
+        setShowPaywall(true);
+        return;
+      }
+    }
     setLocalPrefs((prev: any) => ({ ...prev, [key]: value }));
   };
 
@@ -504,6 +524,13 @@ export default function SettingsPage() {
           </Section>
         </div>
       </div>
+      {/* PAYWALL MODAL */}
+      {showPaywall && (
+        <PaywallModal
+          feature={paywallFeature}
+          onClose={() => setShowPaywall(false)}
+        />
+      )}
     </div>
   );
 }

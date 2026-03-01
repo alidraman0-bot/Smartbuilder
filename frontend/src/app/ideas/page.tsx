@@ -10,10 +10,19 @@ import {
   Activity,
   X,
   ArrowRight,
-  ShieldAlert
+  ShieldAlert,
+  ChevronRight
 } from 'lucide-react';
+import StartupPipeline, { PipelineStage } from '@/components/layout/StartupPipeline';
 import IdeaCard from '@/components/ideas/IdeaCard';
 import IdeaDetailPanel from '@/components/ideas/IdeaDetailPanel';
+import PaywallModal from '@/components/billing/PaywallModal';
+import LiveMarketSignals, { MarketSignal } from '@/components/ideas/LiveMarketSignals';
+import ThinkingPanel from '@/components/opportunities/ThinkingPanel';
+import OpportunityCard, { OpportunityIdea } from '@/components/opportunities/OpportunityCard';
+import { useBillingStore } from '@/store/useBillingStore';
+import { createClient } from '@/utils/supabase/client';
+import { type FeatureKey } from '@/utils/feature-gating';
 
 interface Idea {
   idea_id: string;
@@ -56,7 +65,96 @@ export default function IdeaGeneratorPage() {
   const [isDetailOpen, setIsDetailOpen] = useState(false);
   const [generationType, setGenerationType] = useState<'user' | 'auto' | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [showPaywall, setShowPaywall] = useState(false);
+  const [paywallFeature, setPaywallFeature] = useState<FeatureKey>('idea_generation');
+
+  const [startupId, setStartupId] = useState<string | null>(null);
+  const [currentStage, setCurrentStage] = useState<PipelineStage>('idea');
+
+  const [isThinking, setIsThinking] = useState(false);
+  const [showOpportunities, setShowOpportunities] = useState(false);
+  const [opportunityIdeas, setOpportunityIdeas] = useState<OpportunityIdea[]>([]);
+  const [isEngineGenerating, setIsEngineGenerating] = useState(false);
+
   const router = useRouter();
+  const { subscription, fetchSubscription } = useBillingStore();
+
+  const supabase = createClient();
+
+  React.useEffect(() => {
+    const getOrg = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        // 1. Try finding org where user is a member (org_members)
+        let { data: orgMember } = await supabase
+          .from('org_members')
+          .select('org_id')
+          .eq('user_id', user.id)
+          .maybeSingle();
+
+        let org_id = orgMember?.org_id;
+
+        // 2. Try legacy team_members if not found
+        if (!org_id) {
+          const { data: teamMember } = await supabase
+            .from('team_members')
+            .select('org_id')
+            .eq('user_id', user.id)
+            .maybeSingle();
+          org_id = teamMember?.org_id;
+        }
+
+        // 3. Check if user is an owner of any organization
+        if (!org_id) {
+          const { data: ownedOrg } = await supabase
+            .from('organizations')
+            .select('id')
+            .eq('owner_id', user.id)
+            .limit(1)
+            .maybeSingle();
+          org_id = ownedOrg?.id;
+        }
+
+        if (!org_id) {
+          // 4. Frictionless Fallback: Auto-provision a default org
+          try {
+            const { data: { session } } = await supabase.auth.getSession();
+            const res = await fetch('/api/v1/billing/provision', {
+              headers: {
+                'Authorization': `Bearer ${session?.access_token}`
+              }
+            });
+            if (res.ok) {
+              const data = await res.json();
+              org_id = data.org_id;
+              console.info('Auto-provisioned default organization');
+            }
+          } catch (err) {
+            console.error('Failed to auto-provision organization:', err);
+          }
+        }
+
+        if (org_id) {
+          const { data: { session } } = await supabase.auth.getSession();
+          fetchSubscription(org_id);
+
+          // Fetch or create startup tracking
+          try {
+            const res = await fetch('/api/v1/startup-progress', {
+              headers: { 'Authorization': `Bearer ${session?.access_token}` }
+            });
+            // For simplify, we'll try to find any startup or create one
+            const sRes = await fetch('/api/v1/startup', {
+              headers: { 'Authorization': `Bearer ${session?.access_token}` }
+            });
+            // In a real app, we'd have a project selector. 
+            // Here we'll just use a mock/first startup approach for the visual demo.
+          } catch (e) { }
+        }
+      }
+    };
+    getOrg();
+  }, [fetchSubscription]);
 
   // --- Actions ---
 
@@ -70,9 +168,13 @@ export default function IdeaGeneratorPage() {
     setIsDetailOpen(false);
 
     try {
+      const { data: { session } } = await supabase.auth.getSession();
       const response = await fetch('/api/v1/ideas/generate', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session?.access_token}`
+        },
         body: JSON.stringify({
           mode: 'validate_idea',
           user_input: userIdeaInput
@@ -80,12 +182,19 @@ export default function IdeaGeneratorPage() {
       });
 
       if (!response.ok) {
+        if (response.status === 429 || response.status === 402) {
+          setPaywallFeature('idea_generation');
+          setShowPaywall(true);
+          setIsGenerating(false);
+          return;
+        }
+
         const errorText = await response.text().catch(() => 'No body');
         console.error('Generation API failed:', response.status, errorText);
         let errorDetail = 'Failed to generate ideas';
         try {
           const errorData = JSON.parse(errorText);
-          errorDetail = errorData.detail || errorDetail;
+          errorDetail = errorData.detail?.error || errorData.detail || errorDetail;
         } catch (e) { }
         throw new Error(errorDetail);
       }
@@ -93,6 +202,8 @@ export default function IdeaGeneratorPage() {
       const data = await response.json();
       const ideas = Array.isArray(data) ? data : (data.ideas || []);
       setGeneratedIdeas(ideas);
+      // Auto-advance pipeline to research
+      setCurrentStage('research');
     } catch (err: any) {
       console.error('Generation error:', err);
       setError(err.message);
@@ -102,6 +213,59 @@ export default function IdeaGeneratorPage() {
   };
 
   const handleGenerateAuto = async () => {
+    setIsEngineGenerating(true);
+    setIsThinking(true);
+    setError(null);
+    setGenerationType('auto');
+    setGeneratedIdeas([]);
+    setOpportunityIdeas([]);
+    setSelectedIdea(null);
+    setIsDetailOpen(false);
+
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const response = await fetch('/api/v1/opportunity-engine', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session?.access_token}`
+        }
+      });
+
+      if (!response.ok) {
+        if (response.status === 429 || response.status === 402) {
+          setPaywallFeature('idea_generation');
+          setShowPaywall(true);
+          setIsEngineGenerating(false);
+          setIsThinking(false);
+          return;
+        }
+
+        const errorText = await response.text().catch(() => 'No body');
+        console.error('Opportunity Engine failed:', response.status, errorText);
+        throw new Error('Failed to discover opportunities');
+      }
+
+      const data = await response.json();
+      setOpportunityIdeas(data.ideas || []);
+      // Auto-advance pipeline to research
+      setCurrentStage('research');
+      // We don't set setIsThinking(false) here, we let ThinkingPanel finish
+    } catch (err: any) {
+      console.error('Opportunity error:', err);
+      setError(err.message);
+      setIsThinking(false);
+    } finally {
+      setIsEngineGenerating(false);
+    }
+  };
+
+  const onThinkingComplete = () => {
+    setIsThinking(false);
+    setShowOpportunities(true);
+  };
+
+  const handleGenerateFromSignal = async (signal: MarketSignal) => {
     setIsGenerating(true);
     setError(null);
     setGenerationType('auto');
@@ -110,28 +274,74 @@ export default function IdeaGeneratorPage() {
     setIsDetailOpen(false);
 
     try {
-      const response = await fetch('/api/v1/ideas/generate', {
+      const response = await fetch('/api/generate-from-signal', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+        },
         body: JSON.stringify({
-          mode: 'discover'
+          source: signal.source,
+          title: signal.title,
+          description: signal.description || ''
         })
       });
 
       if (!response.ok) {
+        if (response.status === 429 || response.status === 402) {
+          setPaywallFeature('idea_generation');
+          setShowPaywall(true);
+          setIsGenerating(false);
+          return;
+        }
+
         const errorText = await response.text().catch(() => 'No body');
         console.error('Generation API failed:', response.status, errorText);
         let errorDetail = 'Failed to generate ideas';
         try {
           const errorData = JSON.parse(errorText);
-          errorDetail = errorData.detail || errorDetail;
+          errorDetail = errorData.detail?.error || errorData.detail || errorDetail;
         } catch (e) { }
         throw new Error(errorDetail);
       }
 
       const data = await response.json();
-      const ideas = Array.isArray(data) ? data : (data.ideas || []);
-      setGeneratedIdeas(ideas);
+
+      const newIdea: Idea = {
+        idea_id: `signal-${Date.now()}`,
+        title: data.title,
+        thesis: data.description,
+        market_size: 'Unknown (Signal Based)',
+        problem_bullets: [data.why_now],
+        target_customer: {
+          primary_user: data.target_audience,
+          company_size: 'Any',
+          industry_or_role: 'N/A'
+        },
+        monetization: {
+          pricing_structure: data.monetization,
+          who_pays: 'Target Audience',
+          value_prop: 'Solving an immediate market problem'
+        },
+        why_now_bullets: [data.why_now],
+        alternatives_structured: {
+          today: ['Status quo'],
+          gaps: ['Inefficient']
+        },
+        mvp_scope_bullets: data.core_features || [],
+        confidence_reasoning_bullets: ['Directly addresses a live market signal or complaint'],
+        risks_structured: {
+          adoption: 'Requires behavior change',
+          technical: 'Moderate',
+          market: 'Testing required'
+        },
+        confidence_score: 85,
+        market_score: 80,
+        execution_complexity: 50
+      };
+
+      setGeneratedIdeas([newIdea]);
+      // Auto-advance pipeline to research
+      setCurrentStage('research');
     } catch (err: any) {
       console.error('Generation error:', err);
       setError(err.message);
@@ -172,7 +382,12 @@ export default function IdeaGeneratorPage() {
       <div className="fixed bottom-0 right-0 w-[500px] h-[500px] bg-purple-600/10 rounded-full blur-[120px] translate-x-1/2 translate-y-1/2 pointer-events-none" />
       <div className="absolute inset-0 bg-[url('/grid.svg')] bg-center [mask-image:linear-gradient(180deg,white,rgba(255,255,255,0))]" />
 
-      <div className="max-w-5xl mx-auto px-6 py-20 relative z-10">
+      <div className="max-w-7xl mx-auto px-6 py-20 relative z-10">
+        {/* STARTUP PIPELINE */}
+        <div className="mb-12">
+          <StartupPipeline currentStage={currentStage} />
+        </div>
+
         <header className="mb-16 text-center">
           <div className="flex items-center justify-center space-x-3 mb-6">
             <div className="p-3 bg-indigo-500/10 rounded-2xl border border-indigo-500/20">
@@ -195,102 +410,156 @@ export default function IdeaGeneratorPage() {
           </div>
         )}
 
-        {/* 2. INPUT ZONE */}
-        {!generatedIdeas.length && !isGenerating ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-8 animate-in fade-in duration-200">
-            {/* USER IDEA INPUT */}
-            <div className="group relative flex flex-col bg-[#0A0A0A] border border-white/10 rounded-2xl p-8 backdrop-blur-xl hover:border-indigo-500/50 transition-all duration-300">
-              <div className="flex items-center space-x-3 mb-6">
-                <Lightbulb className="w-5 h-5 text-indigo-400" />
-                <h2 className="text-xl font-bold text-white">Validate Idea</h2>
-              </div>
-              <textarea
-                id="user-idea"
-                value={userIdeaInput}
-                onChange={(e) => setUserIdeaInput(e.target.value)}
-                placeholder="Describe the startup idea or problem you're thinking about..."
-                className="flex-1 w-full bg-white/5 border border-white/10 rounded-xl p-4 text-base text-white placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-transparent transition-all resize-none min-h-[160px]"
-              />
-              <button
-                onClick={handleGenerateUser}
-                disabled={!userIdeaInput.trim()}
-                className="mt-6 inline-flex items-center justify-center px-6 py-4 bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-bold rounded-xl transition-all shadow-lg shadow-indigo-500/20 disabled:opacity-50 disabled:cursor-not-allowed group-hover:scale-[1.02] active:scale-95 duration-200"
-              >
-                <span>Analyze Opportunity</span>
-                <ArrowRight className="w-4 h-4 ml-2" />
-              </button>
-            </div>
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+          <div className="col-span-1 lg:col-span-2 space-y-8 text-left">
+            {/* THINKING MODE */}
+            {isThinking && (
+              <ThinkingPanel onComplete={onThinkingComplete} />
+            )}
 
-            {/* ONE-CLICK DISCOVERY */}
-            <div className="group relative flex flex-col bg-[#0A0A0A] border border-white/10 rounded-2xl p-8 backdrop-blur-xl hover:border-emerald-500/50 transition-all duration-300 justify-center items-center text-center">
-              <div className="w-16 h-16 bg-gradient-to-br from-emerald-500/20 to-teal-500/20 rounded-2xl border border-emerald-500/30 flex items-center justify-center mb-6 shadow-[0_0_30px_-5px_rgba(16,185,129,0.3)] group-hover:scale-110 transition-transform duration-500">
-                <Sparkles className="w-8 h-8 text-emerald-400" />
+            {/* 2. INPUT ZONE */}
+            {!generatedIdeas.length && !opportunityIdeas.length && !isGenerating && !isThinking && (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-8 animate-in fade-in duration-200">
+                {/* USER IDEA INPUT */}
+                <div className="group relative flex flex-col bg-[#0A0A0A] border border-white/10 rounded-2xl p-8 backdrop-blur-xl hover:border-indigo-500/50 transition-all duration-300">
+                  <div className="flex items-center space-x-3 mb-6">
+                    <Lightbulb className="w-5 h-5 text-indigo-400" />
+                    <h2 className="text-xl font-bold text-white">Validate Idea</h2>
+                  </div>
+                  <textarea
+                    id="user-idea"
+                    value={userIdeaInput}
+                    onChange={(e) => setUserIdeaInput(e.target.value)}
+                    placeholder="Describe the startup idea or problem you're thinking about..."
+                    className="flex-1 w-full bg-white/5 border border-white/10 rounded-xl p-4 text-base text-white placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-transparent transition-all resize-none min-h-[160px]"
+                  />
+                  <button
+                    onClick={handleGenerateUser}
+                    disabled={!userIdeaInput.trim()}
+                    className="mt-6 inline-flex items-center justify-center px-6 py-4 bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-bold rounded-xl transition-all shadow-lg shadow-indigo-500/20 disabled:opacity-50 disabled:cursor-not-allowed group-hover:scale-[1.02] active:scale-95 duration-200"
+                  >
+                    <span>Analyze Opportunity</span>
+                    <ArrowRight className="w-4 h-4 ml-2" />
+                  </button>
+                </div>
+
+                {/* ONE-CLICK DISCOVERY */}
+                <div className="group relative flex flex-col bg-[#0A0A0A] border border-white/10 rounded-2xl p-8 backdrop-blur-xl hover:border-emerald-500/50 transition-all duration-300 justify-center items-center text-center">
+                  <div className="w-16 h-16 bg-gradient-to-br from-emerald-500/20 to-teal-500/20 rounded-2xl border border-emerald-500/30 flex items-center justify-center mb-6 shadow-[0_0_30px_-5px_rgba(16,185,129,0.3)] group-hover:scale-110 transition-transform duration-500">
+                    <Sparkles className="w-8 h-8 text-emerald-400" />
+                  </div>
+                  <h3 className="text-xl font-bold text-white mb-3">Discover Opportunities</h3>
+                  <p className="text-zinc-500 text-sm leading-relaxed mb-8 px-4">
+                    Let Smartbuilder surface high-potential ideas based on <span className="text-emerald-400 font-medium">live market gaps</span>.
+                  </p>
+                  <button
+                    onClick={handleGenerateAuto}
+                    className="w-full inline-flex items-center justify-center px-8 py-4 bg-white/5 hover:bg-white/10 border border-white/10 hover:border-emerald-500/50 text-white text-sm font-bold rounded-xl transition-all group-hover:shadow-[0_0_20px_-5px_rgba(16,185,129,0.2)]"
+                  >
+                    <Search className="w-4 h-4 mr-2 text-emerald-400" />
+                    Generate Best Ideas
+                  </button>
+                </div>
               </div>
-              <h3 className="text-xl font-bold text-white mb-3">Discover Opportunities</h3>
-              <p className="text-zinc-500 text-sm leading-relaxed mb-8 px-4">
-                Let Smartbuilder surface high-potential ideas based on <span className="text-emerald-400 font-medium">live market gaps</span>.
-              </p>
-              <button
-                onClick={handleGenerateAuto}
-                className="w-full inline-flex items-center justify-center px-8 py-4 bg-white/5 hover:bg-white/10 border border-white/10 hover:border-emerald-500/50 text-white text-sm font-bold rounded-xl transition-all group-hover:shadow-[0_0_20px_-5px_rgba(16,185,129,0.2)]"
-              >
-                <Search className="w-4 h-4 mr-2 text-emerald-400" />
-                Generate Best Ideas
-              </button>
+            )}
+
+            {/* LOADING STATE */}
+            {isGenerating && (
+              <div className="py-24 flex flex-col items-center justify-center text-center animate-in fade-in duration-200 relative">
+                <div className="relative">
+                  <div className="w-20 h-20 border-t-2 border-indigo-500 rounded-full animate-spin"></div>
+                  <div className="absolute inset-0 flex items-center justify-center">
+                    <BrainCircuit className="w-8 h-8 text-white/50 animate-pulse" />
+                  </div>
+                </div>
+                <h3 className="text-2xl font-bold text-white mt-8 mb-2">Analyzing Signals</h3>
+                <p className="text-zinc-500 max-w-md mx-auto">
+                  Connecting to live data sources and validating demand...
+                </p>
+              </div>
+            )}
+
+            {/* ENGINE RESULTS AREA */}
+            {!isThinking && showOpportunities && (
+              <div className="space-y-12 animate-in slide-in-from-bottom-8 duration-500">
+                <div className="flex items-center justify-between border-b border-white/5 pb-6">
+                  <div>
+                    <h2 className="text-3xl font-extrabold text-white flex items-center mb-2">
+                      <Sparkles className="w-8 h-8 mr-4 text-emerald-400" />
+                      Venture Opportunities
+                    </h2>
+                    <p className="text-zinc-500 text-sm">Detected from 12,483 real-time market signals</p>
+                  </div>
+                  <button
+                    onClick={() => {
+                      setOpportunityIdeas([]);
+                      setShowOpportunities(false);
+                    }}
+                    className="text-xs font-bold text-zinc-500 hover:text-white uppercase tracking-widest transition-colors flex items-center"
+                  >
+                    <X className="w-4 h-4 mr-2" />
+                    Reset
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-1 gap-8">
+                  {opportunityIdeas.map((idea, index) => (
+                    <OpportunityCard
+                      key={index}
+                      idea={idea}
+                      onResearch={() => {
+                        setUserIdeaInput(idea.title + ': ' + idea.problem);
+                        setShowOpportunities(false);
+                        handleGenerateUser();
+                      }}
+                    />
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* VALIDATION RESULTS AREA */}
+            {!isGenerating && generatedIdeas.length > 0 && (
+              <div className="space-y-8 animate-in slide-in-from-bottom-8 duration-200">
+                <div className="flex items-center justify-between">
+                  <h2 className="text-xl font-bold text-white flex items-center">
+                    <Activity className="w-5 h-5 mr-3 text-indigo-400" />
+                    Detected Opportunities
+                  </h2>
+                  <button
+                    onClick={() => {
+                      setGeneratedIdeas([]);
+                      setUserIdeaInput('');
+                      setSelectedIdea(null);
+                      setIsDetailOpen(false);
+                    }}
+                    className="text-[10px] font-bold text-zinc-500 hover:text-white uppercase tracking-widest transition-colors flex items-center"
+                  >
+                    <X className="w-4 h-4 mr-2" />
+                    Reset
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-1 gap-4 text-left">
+                  {generatedIdeas.map((idea, index) => (
+                    <IdeaCard
+                      key={idea.idea_id || `idea-${index}`}
+                      idea={idea}
+                      isSelected={selectedIdea?.idea_id === idea.idea_id}
+                      onClick={() => handleSelectIdea(idea)}
+                    />
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div className="col-span-1 border-l border-white/5 pl-8">
+            <div className="sticky top-24 h-[calc(100vh-8rem)]">
+              <LiveMarketSignals onSignalClick={handleGenerateFromSignal} isGenerating={isGenerating || isThinking} />
             </div>
           </div>
-        ) : null}
-
-        {/* LOADING STATE */}
-        {isGenerating && (
-          <div className="py-24 flex flex-col items-center justify-center text-center animate-in fade-in duration-200">
-            <div className="relative">
-              <div className="w-20 h-20 border-t-2 border-indigo-500 rounded-full animate-spin"></div>
-              <div className="absolute inset-0 flex items-center justify-center">
-                <BrainCircuit className="w-8 h-8 text-white/50 animate-pulse" />
-              </div>
-            </div>
-            <h3 className="text-2xl font-bold text-white mt-8 mb-2">Analyzing Signals</h3>
-            <p className="text-zinc-500 max-w-md mx-auto">
-              Connecting to live data sources and validating demand...
-            </p>
-          </div>
-        )}
-
-        {/* RESULTS AREA */}
-        {!isGenerating && generatedIdeas.length > 0 && (
-          <div className="space-y-8 animate-in slide-in-from-bottom-8 duration-200">
-            <div className="flex items-center justify-between">
-              <h2 className="text-xl font-bold text-white flex items-center">
-                <Activity className="w-5 h-5 mr-3 text-indigo-400" />
-                Detected Opportunities
-              </h2>
-              <button
-                onClick={() => {
-                  setGeneratedIdeas([]);
-                  setUserIdeaInput('');
-                  setSelectedIdea(null);
-                  setIsDetailOpen(false);
-                }}
-                className="text-[10px] font-bold text-zinc-500 hover:text-white uppercase tracking-widest transition-colors flex items-center"
-              >
-                <X className="w-4 h-4 mr-2" />
-                Reset
-              </button>
-            </div>
-
-            <div className="grid grid-cols-1 gap-4">
-              {generatedIdeas.map((idea) => (
-                <IdeaCard
-                  key={idea.idea_id}
-                  idea={idea}
-                  isSelected={selectedIdea?.idea_id === idea.idea_id}
-                  onClick={() => handleSelectIdea(idea)}
-                />
-              ))}
-            </div>
-          </div>
-        )}
+        </div>
       </div>
 
       {/* DETAIL PANEL OVERLAY */}
@@ -301,6 +570,13 @@ export default function IdeaGeneratorPage() {
         onPromote={handlePromote}
         isPromoting={false}
       />
+      {/* PAYWALL MODAL */}
+      {showPaywall && (
+        <PaywallModal
+          feature={paywallFeature}
+          onClose={() => setShowPaywall(false)}
+        />
+      )}
     </div>
   );
 }

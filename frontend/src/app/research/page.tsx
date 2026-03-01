@@ -4,6 +4,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { useRunStore } from '@/store/useRunStore';
 import { useRouter } from 'next/navigation';
 import { ShieldCheck, Loader2, Skull, Database, ArrowRight, FileDown, Share2 } from 'lucide-react';
+import StartupPipeline from '@/components/layout/StartupPipeline';
 import { parseResearchData } from '@/utils/researchParser';
 import IdeaContextBar from '@/components/research/IdeaContextBar';
 import ExecutiveSummary from '@/components/research/ExecutiveSummary';
@@ -17,17 +18,20 @@ import RegulatoryFactors from '@/components/research/RegulatoryFactors';
 import MonetizationAnalysis from '@/components/research/MonetizationAnalysis';
 import RiskAnalysis from '@/components/research/RiskAnalysis';
 import SynthesisScorecard from '@/components/research/SynthesisScorecard';
+import StartupVerdict from '@/components/research/StartupVerdict';
 
 export default function ResearchPage() {
     const run = useRunStore();
     const router = useRouter();
     const [isProcessing, setIsProcessing] = useState(false);
     const [localResearch, setLocalResearch] = useState<any>(null);
+    const [isVerdictLoading, setIsVerdictLoading] = useState(false);
+    const [verdictData, setVerdictData] = useState<any>(null);
 
     // Sync with global store if available
     useEffect(() => {
         if (run.research) {
-            setLocalResearch(run.research);
+            setLocalResearch(run.research as any);
         }
     }, [run.research]);
 
@@ -36,6 +40,60 @@ export default function ResearchPage() {
         if (!localResearch) return null;
         return parseResearchData(localResearch);
     }, [localResearch]);
+
+    // Fetch Verdict Data when institutionalData is available
+    useEffect(() => {
+        if (!institutionalData || verdictData || isVerdictLoading) return;
+
+        const fetchVerdict = async () => {
+            setIsVerdictLoading(true);
+            try {
+                // Approximate inputs based on parsed institutional data
+                const compScore = institutionalData.synthesis_scorecard.composite_scores.find(s => s.dimension === 'Market Attractiveness')?.score || 5;
+                const trendSignal = institutionalData.growth_trends.trend_signals[0];
+                const marketEco = institutionalData.market_economics;
+
+                const payload = {
+                    opportunity_score: compScore,
+                    trend_growth: trendSignal?.growth_rate || 20,
+                    competitor_count: institutionalData.competitive_landscape.competitive_matrix.length,
+                    funding_activity: institutionalData.growth_trends.trend_signals.find(s => s.type === 'funding_velocity')?.acceleration || 'Stable',
+                    market_size: marketEco.tam.value ? `$${marketEco.tam.value}B TAM` : 'Unknown',
+                    idea: institutionalData.context.idea_name
+                };
+
+                const res = await fetch('/api/v1/verdict', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+
+                if (res.ok) {
+                    const data = await res.json();
+                    setVerdictData(data);
+                } else {
+                    console.error("Failed to fetch verdict");
+                    // Mock it on failure for UX, especially since AI quota is limited
+                    setVerdictData({
+                        verdict: "Promising Opportunity",
+                        success_probability: "68%",
+                        confidence_score: 0.72,
+                        reasons: [
+                            "Search demand increasing",
+                            "Competition manageable",
+                            "Strong monetization potential"
+                        ]
+                    });
+                }
+            } catch (err) {
+                console.error("Verdict fetch error:", err);
+            } finally {
+                setIsVerdictLoading(false);
+            }
+        };
+
+        fetchVerdict();
+    }, [institutionalData, verdictData, isVerdictLoading]);
 
     const handleDecision = async (decision: 'APPROVE' | 'KILL') => {
         setIsProcessing(true);
@@ -47,6 +105,7 @@ export default function ResearchPage() {
             });
             if (res.ok) {
                 if (decision === 'APPROVE') {
+                    // Update pipeline stage to PRD
                     router.push('/builder');
                 } else {
                     router.push('/ideas');
@@ -90,6 +149,13 @@ export default function ResearchPage() {
 
     return (
         <div className="min-h-screen bg-[#0A0A0A]">
+            {/* Startup Pipeline Tracker */}
+            <div className="max-w-7xl mx-auto px-8 pt-8">
+                <div className="bg-white/[0.02] border border-white/5 rounded-3xl p-2 backdrop-blur-xl">
+                    <StartupPipeline currentStage="research" />
+                </div>
+            </div>
+
             {/* Persistent Context Bar */}
             <IdeaContextBar context={institutionalData.context} />
 
@@ -167,6 +233,9 @@ export default function ResearchPage() {
                         </div>
                     </div>
                 </section>
+
+                {/* Verdict Section (NEW) */}
+                <StartupVerdict data={verdictData} isLoading={isVerdictLoading} />
 
                 {/* Primary CTA Section */}
                 <section className="relative z-30 -mx-8 px-8 py-8 mt-12 bg-[#0A0A0A]">

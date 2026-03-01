@@ -118,8 +118,8 @@ export default function IdeaDetailPanel({ idea, isOpen, onClose, onPromote, isPr
                                 The Problem
                             </h3>
                             <ul className="space-y-3">
-                                {idea.problem_bullets.map((bullet, i) => (
-                                    <li key={i} className="flex items-start text-sm text-zinc-300 leading-relaxed font-medium">
+                                {(idea.problem_bullets || []).map((bullet, i) => (
+                                    <li key={`prob-${i}`} className="flex items-start text-sm text-zinc-300 leading-relaxed font-medium">
                                         <span className="mr-3 text-zinc-600">—</span>
                                         {bullet}
                                     </li>
@@ -169,8 +169,8 @@ export default function IdeaDetailPanel({ idea, isOpen, onClose, onPromote, isPr
                                 Why Now
                             </h3>
                             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                                {idea.why_now_bullets.map((bullet, i) => (
-                                    <div key={i} className="p-4 border border-white/5 bg-white/[0.01] rounded-xl flex flex-col justify-between min-h-[100px]">
+                                {(idea.why_now_bullets || []).map((bullet, i) => (
+                                    <div key={`wn-${i}`} className="p-4 border border-white/5 bg-white/[0.01] rounded-xl flex flex-col justify-between min-h-[100px]">
                                         <p className="text-xs text-zinc-300 font-medium leading-relaxed">{bullet}</p>
                                         <span className="text-[10px] text-zinc-600 mt-2">Signal {i + 1}</span>
                                     </div>
@@ -210,8 +210,8 @@ export default function IdeaDetailPanel({ idea, isOpen, onClose, onPromote, isPr
                                 MVP Scope
                             </h3>
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-x-12 gap-y-4">
-                                {idea.mvp_scope_bullets.map((item, i) => (
-                                    <div key={i} className="flex items-center space-x-3 text-sm text-zinc-300 border-b border-white/5 pb-3">
+                                {(idea.mvp_scope_bullets || []).map((item, i) => (
+                                    <div key={`mvp-${i}`} className="flex items-center space-x-3 text-sm text-zinc-300 border-b border-white/5 pb-3">
                                         <span className="text-[10px] font-mono text-zinc-600 font-bold">0{i + 1}</span>
                                         <span className="font-medium tracking-tight">{item}</span>
                                     </div>
@@ -226,8 +226,8 @@ export default function IdeaDetailPanel({ idea, isOpen, onClose, onPromote, isPr
                             <div className="relative z-10 space-y-4">
                                 <h3 className="text-[11px] font-bold text-indigo-400 uppercase tracking-[0.2em]">Why Smartbuilder is Confident</h3>
                                 <div className="space-y-3">
-                                    {idea.confidence_reasoning_bullets.map((point, i) => (
-                                        <div key={i} className="flex items-start space-x-3 text-sm text-zinc-200">
+                                    {(idea.confidence_reasoning_bullets || []).map((point, i) => (
+                                        <div key={`conf-${i}`} className="flex items-start space-x-3 text-sm text-zinc-200">
                                             <CheckCircle2 size={16} className="text-indigo-500 shrink-0 mt-0.5" />
                                             <span className="font-medium leading-relaxed">{point}</span>
                                         </div>
@@ -267,11 +267,11 @@ export default function IdeaDetailPanel({ idea, isOpen, onClose, onPromote, isPr
                             ) : (
                                 <Zap size={16} className="fill-current" />
                             )}
-                            <span className="tracking-[0.2em] uppercase">{isPromoting ? 'Promoting...' : 'Promote to Market Research'}</span>
+                            <span className="tracking-[0.2em] uppercase">{isPromoting ? 'Initializing...' : 'Build this with Smartbuilder'}</span>
                         </div>
                         {!isPromoting && (
                             <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">
-                                Initialize Deep Signal Analysis
+                                Promote to Market Research & Deep Signal Analysis
                             </span>
                         )}
                     </button>

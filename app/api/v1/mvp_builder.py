@@ -119,8 +119,45 @@ async def iterate_build(session_id: str, request: IterateRequest):
 async def freeze_build(session_id: str):
     """
     S4 → S6: Freeze build (make immutable)
+    Requires Pro plan+
     """
     try:
+        # 1. Identify owner/org
+        session = mvp_builder_service.get_session(session_id)
+        if not session:
+            raise HTTPException(status_code=404, detail="Session not found")
+        
+        # In this system, we need to find the org_id for the run
+        # We'll use a helper to get org from user_members
+        from app.core.supabase import get_service_client
+        svc_client = get_service_client()
+        
+        # Finding the project owner
+        proj_res = svc_client.table("projects")\
+            .select("owner_id")\
+            .eq("project_id", session.run_id)\
+            .single()\
+            .execute()
+        
+        org_id = None
+        if proj_res.data and proj_res.data.get("owner_id"):
+            owner_id = proj_res.data["owner_id"]
+            org_res = svc_client.table("team_members")\
+                .select("org_id")\
+                .eq("user_id", owner_id)\
+                .limit(1)\
+                .execute()
+            if org_res.data:
+                org_id = org_res.data[0]["org_id"]
+        
+        if not org_id:
+             org_id = "00000000-0000-0000-0000-000000000000"
+
+        # 2. Enforce Gating
+        from app.services.billing_service import billing_service
+        billing_service.require_feature_access(org_id, "freeze_build")
+
+        # 3. Proceed with freeze
         session = await mvp_builder_service.freeze(session_id)
         
         return {

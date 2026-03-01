@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { getAuthHeaders } from '@/utils/supabase/auth';
 
 interface PipelineStage {
     id: string;
@@ -52,9 +53,9 @@ interface RunState {
     pipeline: PipelineStage[];
     system_metrics: SystemMetrics;
     advisor: AdvisorData;
-    research?: any;
-    business_plan?: any;
-    prd?: any;
+    research?: unknown;
+    business_plan?: unknown;
+    prd?: unknown;
 
     // Deployment state
     deployment_id: string | null;
@@ -64,7 +65,7 @@ interface RunState {
     deployment_stages: DeploymentStage[];
     deployment_logs: DeploymentLog[];
     deployment_errors: string[];
-    deployment_history: any[];
+    deployment_history: unknown[];
 
     // Monitoring state
     monitoring_health: 'healthy' | 'degraded' | 'critical' | 'unknown';
@@ -80,13 +81,14 @@ interface RunState {
         alerts: string[];
         pulse_summary?: string;
         latency_narrative?: string;
-        recommendations?: any[];
-        remediation_actions?: any[];
-        incidents?: any[];
+        recommendations?: unknown[];
+        remediation_actions?: unknown[];
+        incidents?: unknown[];
     };
-    monitoring_logs: any[];
-    executive_summary: any;
-    compliance_report: any;
+    monitoring_logs: unknown[];
+    executive_summary: unknown;
+    compliance_report: unknown;
+    isAiCofounderOpen: boolean;
 
     setRunState: (data: Partial<RunState>) => void;
     startPolling: () => void;
@@ -98,6 +100,7 @@ interface RunState {
     fetchExecutiveSummary: (deploymentId: string) => Promise<void>;
     fetchComplianceReport: () => Promise<void>;
     triggerMonitorAction: (deploymentId: string, action: string) => Promise<void>;
+    toggleAiCofounder: (open?: boolean) => void;
 }
 
 export const useRunStore = create<RunState>((set) => ({
@@ -147,15 +150,17 @@ export const useRunStore = create<RunState>((set) => ({
     monitoring_logs: [],
     executive_summary: null,
     compliance_report: null,
+    isAiCofounderOpen: false,
 
     setRunState: (data) => set((state) => ({ ...state, ...data })),
 
     startDeployment: async (buildId: string) => {
         try {
             const runId = useRunStore.getState().runId;
+            const headers = await getAuthHeaders();
             const res = await fetch('/api/v1/deploy/start', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers,
                 body: JSON.stringify({ run_id: runId, build_id: buildId })
             });
 
@@ -196,8 +201,16 @@ export const useRunStore = create<RunState>((set) => ({
     pollDeploymentStatus: (deploymentId: string) => {
         const fetchStatus = async () => {
             try {
-                const res = await fetch(`/api/v1/deploy/${deploymentId}/status`);
+                const headers = await getAuthHeaders();
+                const res = await fetch(`/api/v1/deploy/${deploymentId}/status`, {
+                    headers
+                });
                 if (res.ok) {
+                    const contentType = res.headers.get("content-type");
+                    if (!contentType || !contentType.includes("application/json")) {
+                        console.error("Expected JSON deployment status, but got:", contentType);
+                        return false;
+                    }
                     const deployment = await res.json();
                     set((state) => ({
                         ...state,
@@ -233,9 +246,10 @@ export const useRunStore = create<RunState>((set) => ({
 
     rollbackDeployment: async (deploymentId: string, reason: string) => {
         try {
+            const headers = await getAuthHeaders();
             const res = await fetch(`/api/v1/deploy/${deploymentId}/rollback`, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers,
                 body: JSON.stringify({ reason })
             });
 
@@ -260,19 +274,34 @@ export const useRunStore = create<RunState>((set) => ({
         let lastPayload = "";
         const fetchData = async () => {
             try {
-                const res = await fetch('/api/v1/status');
-                if (res.ok) {
-                    const data = await res.json();
-                    const currentPayload = JSON.stringify(data);
+                const headers = await getAuthHeaders();
+                const res = await fetch('/api/v1/status', {
+                    headers
+                });
 
-                    // Only update if data changed to save re-renders
-                    if (currentPayload !== lastPayload) {
-                        set((state) => ({ ...state, ...data }));
-                        lastPayload = currentPayload;
-                    }
-                } else {
+                // Robustness check: Ensure response is OK and is JSON
+                if (!res.ok) {
+                    console.warn(`Status fetch failed with status ${res.status}`);
                     set((state) => ({ ...state, health: "OFFLINE" }));
                     lastPayload = "";
+                    return;
+                }
+
+                const contentType = res.headers.get("content-type");
+                if (!contentType || !contentType.includes("application/json")) {
+                    console.error("Expected JSON status response, but got:", contentType);
+                    set((state) => ({ ...state, health: "OFFLINE" }));
+                    lastPayload = "";
+                    return;
+                }
+
+                const data = await res.json();
+                const currentPayload = JSON.stringify(data);
+
+                // Only update if data changed to save re-renders
+                if (currentPayload !== lastPayload) {
+                    set((state) => ({ ...state, ...data }));
+                    lastPayload = currentPayload;
                 }
             } catch (err) {
                 console.error("Failed to fetch status:", err);
@@ -289,8 +318,13 @@ export const useRunStore = create<RunState>((set) => ({
     startMonitoring: (deploymentId: string) => {
         const fetchMonitorData = async () => {
             try {
-                const res = await fetch(`/api/v1/monitor/${deploymentId}/status`);
-                const logsRes = await fetch(`/api/v1/monitor/${deploymentId}/logs`);
+                const headers = await getAuthHeaders();
+                const res = await fetch(`/api/v1/monitor/${deploymentId}/status`, {
+                    headers
+                });
+                const logsRes = await fetch(`/api/v1/monitor/${deploymentId}/logs`, {
+                    headers
+                });
 
                 if (res.ok && logsRes.ok) {
                     const metrics = await res.json();
@@ -326,7 +360,10 @@ export const useRunStore = create<RunState>((set) => ({
 
     fetchExecutiveSummary: async (deploymentId: string) => {
         try {
-            const res = await fetch(`/api/v1/monitor/${deploymentId}/executive`);
+            const headers = await getAuthHeaders();
+            const res = await fetch(`/api/v1/monitor/${deploymentId}/executive`, {
+                headers
+            });
             if (res.ok) {
                 const summary = await res.json();
                 set((state) => ({ ...state, executive_summary: summary }));
@@ -338,7 +375,10 @@ export const useRunStore = create<RunState>((set) => ({
 
     fetchComplianceReport: async () => {
         try {
-            const res = await fetch(`/api/v1/compliance/readiness`);
+            const headers = await getAuthHeaders();
+            const res = await fetch(`/api/v1/compliance/readiness`, {
+                headers
+            });
             if (res.ok) {
                 const report = await res.json();
                 set((state) => ({ ...state, compliance_report: report }));
@@ -350,9 +390,10 @@ export const useRunStore = create<RunState>((set) => ({
 
     triggerMonitorAction: async (deploymentId: string, action: string) => {
         try {
+            const headers = await getAuthHeaders();
             const res = await fetch(`/api/v1/monitor/${deploymentId}/action`, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers,
                 body: JSON.stringify({ action })
             });
             if (res.ok) {
@@ -364,5 +405,8 @@ export const useRunStore = create<RunState>((set) => ({
         } catch (err) {
             console.error(`Failed to trigger monitor action ${action}:`, err);
         }
-    }
+    },
+    toggleAiCofounder: (open) => set((state) => ({
+        isAiCofounderOpen: open !== undefined ? open : !state.isAiCofounderOpen
+    }))
 }));

@@ -172,10 +172,6 @@ function EnvVarSettings({ projectId }: { projectId: string }) {
     const [newValue, setNewValue] = useState('');
     const [targets, setTargets] = useState(['Production', 'Preview', 'Development']);
 
-    useEffect(() => {
-        loadVars();
-    }, [projectId]);
-
     const loadVars = async () => {
         try {
             const res = await fetch(`${API_BASE}/projects/${projectId}/env`);
@@ -184,6 +180,11 @@ function EnvVarSettings({ projectId }: { projectId: string }) {
             console.error(e);
         }
     };
+
+    useEffect(() => {
+        const timer = setTimeout(() => loadVars(), 0);
+        return () => clearTimeout(timer);
+    }, [projectId]);
 
     const handleAdd = async () => {
         if (!newKey || !newValue) return;

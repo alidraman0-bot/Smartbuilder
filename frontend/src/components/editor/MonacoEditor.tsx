@@ -64,9 +64,12 @@ export default function MonacoEditor({ appId, clientId, filePath, initialContent
 
     // Update editor value if the file path changes
     useEffect(() => {
-        setEditorValue(initialContent);
+        if (editorValue !== initialContent) {
+            const timer = setTimeout(() => setEditorValue(initialContent), 0);
+            return () => clearTimeout(timer);
+        }
         lastPushedValue.current = initialContent;
-    }, [filePath, initialContent]);
+    }, [filePath, initialContent, editorValue]);
 
     return (
         <div className="flex flex-col h-full bg-[#1e1e1e] border border-[#333] rounded-lg overflow-hidden shadow-2xl">

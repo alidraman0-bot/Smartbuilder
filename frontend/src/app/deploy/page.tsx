@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { useRunStore } from '@/store/useRunStore';
 import { Project, Deployment, DeploymentDetails, DeploymentLog, DeploymentConfiguration, EnvironmentVariable, Domain, TeamMember, ActivityLogEntry } from '@/types/deploy';
+import StartupPipeline from '@/components/layout/StartupPipeline';
 
 // Vercel-style Components
 import ProjectsSidebar from '@/components/deploy/ProjectsSidebar';
@@ -11,6 +12,9 @@ import DeploymentDetailsDrawer from '@/components/deploy/DeploymentDetailsDrawer
 import DomainsTab from '@/components/deploy/DomainsTab';
 import TeamTab from '@/components/deploy/TeamTab';
 import SettingsTab from '@/components/deploy/SettingsTab';
+import { useBillingStore } from '@/store/useBillingStore';
+import { hasFeature, FeatureKey } from '@/utils/feature-gating';
+import PaywallModal from '@/components/billing/PaywallModal';
 
 const API_BASE = 'http://localhost:8000/api/v1';
 
@@ -32,6 +36,14 @@ export default function DeployPage() {
     const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
     const [activityLog, setActivityLog] = useState<ActivityLogEntry[]>([]);
     const [deploymentDetails, setDeploymentDetails] = useState<DeploymentDetails | null>(null);
+    const [showPaywall, setShowPaywall] = useState(false);
+    const [paywallFeature, setPaywallFeature] = useState<FeatureKey>('deployment');
+
+    const { subscription, fetchSubscription } = useBillingStore();
+
+    useEffect(() => {
+        fetchSubscription('demo-org-id');
+    }, [fetchSubscription]);
 
     // Initial Load - Projects
     useEffect(() => {
@@ -59,22 +71,26 @@ export default function DeployPage() {
         if (!selectedProjectId) return;
 
         // Load Deployments (Mock for now until real endpoint exists)
-        const mockDeployments: Deployment[] = [
-            {
-                deployment_id: 'dep_1',
-                project_id: 'proj_1',
-                status: run.deployment_status === 'LIVE' ? 'success' : run.deployment_status === 'FAILED' ? 'failed' : 'building',
-                commit_message: 'Initial MVP deployment from Smartbuilder',
-                environment: 'Production',
-                created_at: new Date(Date.now() - 3600000).toISOString(),
-                completed_at: new Date().toISOString(),
-                duration: '2m 34s',
-                url: run.deployment_url || 'https://smartbuilder-mvp.vercel.app',
-                version: 'v1.0.0',
-                triggered_by: 'Smartbuilder AI'
-            }
-        ];
-        setDeployments(mockDeployments);
+        const loadMockDeployments = () => {
+            const mockData: Deployment[] = [
+                {
+                    deployment_id: 'dep_1',
+                    project_id: 'proj_1',
+                    status: run.deployment_status === 'LIVE' ? 'success' : run.deployment_status === 'FAILED' ? 'failed' : 'building',
+                    commit_message: 'Initial MVP deployment from Smartbuilder',
+                    environment: 'Production',
+                    created_at: new Date(Date.now() - 3600000).toISOString(),
+                    completed_at: new Date().toISOString(),
+                    duration: '2m 34s',
+                    url: run.deployment_url || 'https://smartbuilder-mvp.vercel.app',
+                    version: 'v1.0.0',
+                    triggered_by: 'Smartbuilder AI'
+                }
+            ];
+            setDeployments(mockData);
+        };
+
+        loadMockDeployments();
 
         // Load Domains
         fetch(`${API_BASE}/projects/${selectedProjectId}/domains/`)
@@ -169,6 +185,14 @@ export default function DeployPage() {
 
     // Team
     const handleInviteMember = async (email: string, role: TeamMember['role']) => {
+        // Feature Gating: Require team_access
+        const currentPlan = subscription?.plan || 'free';
+        if (!hasFeature(currentPlan, 'team_access')) {
+            setPaywallFeature('team_access');
+            setShowPaywall(true);
+            return;
+        }
+
         if (!selectedProjectId) return;
         try {
             const res = await fetch(`${API_BASE}/projects/${selectedProjectId}/team/invite/`, {
@@ -213,6 +237,14 @@ export default function DeployPage() {
 
     // Deployment Actions (Real Integration)
     const handleRedeploy = async (deploymentId: string) => {
+        // Feature Gating: Require deployment
+        const currentPlan = subscription?.plan || 'free';
+        if (!hasFeature(currentPlan, 'deployment')) {
+            setPaywallFeature('deployment');
+            setShowPaywall(true);
+            return;
+        }
+
         if (!selectedProjectId) return;
         const deployment = deployments.find(d => d.deployment_id === deploymentId);
         if (!deployment) return;
@@ -239,6 +271,17 @@ export default function DeployPage() {
         }
     };
 
+    // Placeholder handlers for missing functions
+    const handleRollback = async (deploymentId: string) => {
+        console.log('Rollback requested', deploymentId);
+        alert('Rollback functionality coming soon');
+    };
+
+    const handlePromoteToProduction = async (deploymentId: string) => {
+        console.log('Promote requested', deploymentId);
+        alert('Promotion functionality coming soon');
+    };
+
     return (
         <div className="h-screen flex overflow-hidden bg-[#09090b]">
             {/* Projects Sidebar */}
@@ -250,6 +293,13 @@ export default function DeployPage() {
 
             {/* Main Content Area */}
             <div className="flex-1 flex flex-col min-w-0 bg-[#09090b]">
+                {/* Startup Pipeline Tracker */}
+                <div className="px-6 py-4 bg-[#09090b] border-b border-[#27272a]">
+                    <div className="max-w-4xl bg-white/[0.02] border border-white/5 rounded-2xl p-1">
+                        <StartupPipeline currentStage="launch" />
+                    </div>
+                </div>
+
                 {/* Global Tab Navigation */}
                 <div className="px-6 border-b border-[#27272a] bg-[#09090b]">
                     <div className="flex gap-6">
@@ -352,6 +402,14 @@ export default function DeployPage() {
                 onRollback={handleRollback}
                 onPromoteToProduction={handlePromoteToProduction}
             />
+
+            {/* PAYWALL MODAL */}
+            {showPaywall && (
+                <PaywallModal
+                    feature={paywallFeature}
+                    onClose={() => setShowPaywall(false)}
+                />
+            )}
         </div>
     );
 }

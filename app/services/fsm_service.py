@@ -4,6 +4,9 @@ from typing import Optional, Any, Dict
 from app.core.orchestrator import Orchestrator
 from app.models.state import SystemState
 from app.services.runner import Runner
+from app.services.startup_service import StartupService
+from app.models.startup import ProjectCreate
+from uuid import UUID
 
 logger = logging.getLogger(__name__)
 
@@ -17,7 +20,7 @@ class FSMService:
         # Ensure Runner uses the global singleton
         self.runner.orchestrator = self.orchestrator
 
-    async def start_new_run(self, opportunity: str):
+    async def start_new_run(self, opportunity: str, user_id: Optional[UUID] = None):
         """Initializes a new run from IDLE."""
         if self.orchestrator.state != SystemState.IDLE:
              # If already running, we might want to fail or just return status
@@ -27,6 +30,19 @@ class FSMService:
         self.orchestrator.context = {}
         self.orchestrator.logs = []
         self.orchestrator.confidences = {"opportunity": 0.0, "research": 0.0, "prd": 0.0, "build": 0.0}
+        self.orchestrator.project_id = None
+
+        # Create project in DB if user_id is provided
+        if user_id:
+            try:
+                service = StartupService()
+                project_data = ProjectCreate(startup_name=opportunity[:50]) # Use opportunity as name for now
+                project = service.create_project(user_id=user_id, project_data=project_data)
+                if project:
+                    self.orchestrator.project_id = str(project.id)
+                    self.orchestrator.log_event("DATABASE", f"Initialization: Created Project {project.id}", "success")
+            except Exception as e:
+                logger.error(f"Failed to create project record: {e}")
         
         return await self.runner.run_autonomously(opportunity)
 

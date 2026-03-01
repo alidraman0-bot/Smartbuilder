@@ -44,7 +44,7 @@ export default function InvestmentVerdict({ data }: InvestmentVerdictProps) {
         }
     };
 
-    const config = getVerdictConfig(data.verdict);
+    const config = getVerdictConfig(data?.verdict || 'ITERATE');
     const VerdictIcon = config.icon;
 
     return (
@@ -67,7 +67,7 @@ export default function InvestmentVerdict({ data }: InvestmentVerdictProps) {
                     <div className="flex items-center gap-4">
                         <div className={`px-6 py-3 rounded-xl bg-[#09090b] border ${config.borderColor} shadow-lg`}>
                             <span className={`text-2xl font-black uppercase tracking-wider ${config.textColor}`}>
-                                {data.verdict}
+                                {data?.verdict || 'ITERATE'}
                             </span>
                         </div>
                         <div>
@@ -78,11 +78,11 @@ export default function InvestmentVerdict({ data }: InvestmentVerdictProps) {
                                 <div className="w-32 h-3 bg-[#27272a] rounded-full overflow-hidden">
                                     <div
                                         className={`h-full bg-gradient-to-r from-${config.color}-500 to-${config.color}-600 transition-all duration-1000`}
-                                        style={{ width: `${data.confidence}%` }}
+                                        style={{ width: `${data?.confidence || 0}%` }}
                                     />
                                 </div>
                                 <span className={`text-lg font-bold ${config.textColor}`}>
-                                    {data.confidence}%
+                                    {data?.confidence || 0}%
                                 </span>
                             </div>
                         </div>
@@ -105,12 +105,15 @@ export default function InvestmentVerdict({ data }: InvestmentVerdictProps) {
                             </span>
                         </div>
                         <div className="space-y-2">
-                            {data.reasoning_summary.strong_signals.map((signal, index) => (
+                            {(data?.reasoning_summary?.strong_signals || []).map((signal, index) => (
                                 <div key={index} className="flex items-start gap-2">
                                     <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 flex-shrink-0 mt-2" />
                                     <span className="text-sm text-gray-300">{signal}</span>
                                 </div>
                             ))}
+                            {(!data?.reasoning_summary?.strong_signals || data.reasoning_summary.strong_signals.length === 0) && (
+                                <span className="text-xs text-gray-500 italic">No strong signals identified.</span>
+                            )}
                         </div>
                     </div>
 
@@ -123,12 +126,15 @@ export default function InvestmentVerdict({ data }: InvestmentVerdictProps) {
                             </span>
                         </div>
                         <div className="space-y-2">
-                            {data.reasoning_summary.weak_signals.map((signal, index) => (
+                            {(data?.reasoning_summary?.weak_signals || []).map((signal, index) => (
                                 <div key={index} className="flex items-start gap-2">
                                     <div className="w-1.5 h-1.5 rounded-full bg-yellow-500 flex-shrink-0 mt-2" />
                                     <span className="text-sm text-gray-300">{signal}</span>
                                 </div>
                             ))}
+                            {(!data?.reasoning_summary?.weak_signals || data.reasoning_summary.weak_signals.length === 0) && (
+                                <span className="text-xs text-gray-500 italic">No weak signals identified.</span>
+                            )}
                         </div>
                     </div>
 
@@ -141,12 +147,15 @@ export default function InvestmentVerdict({ data }: InvestmentVerdictProps) {
                             </span>
                         </div>
                         <div className="space-y-2">
-                            {data.reasoning_summary.unknowns.map((unknown, index) => (
+                            {(data?.reasoning_summary?.unknowns || []).map((unknown, index) => (
                                 <div key={index} className="flex items-start gap-2">
                                     <div className="w-1.5 h-1.5 rounded-full bg-gray-500 flex-shrink-0 mt-2" />
                                     <span className="text-sm text-gray-300">{unknown}</span>
                                 </div>
                             ))}
+                            {(!data?.reasoning_summary?.unknowns || data.reasoning_summary.unknowns.length === 0) && (
+                                <span className="text-xs text-gray-500 italic">No unknowns identified.</span>
+                            )}
                         </div>
                     </div>
                 </div>

@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { getAuthHeaders } from '@/utils/supabase/auth';
 
 export interface MemoryEvent {
     id: string;
@@ -32,7 +33,10 @@ export const useMemoryStore = create<MemoryState>((set, get) => ({
     fetchTimeline: async (projectId: string) => {
         set({ isLoading: true, error: null });
         try {
-            const response = await fetch(`${API_BASE_URL}/${projectId}/timeline`);
+            const headers = await getAuthHeaders();
+            const response = await fetch(`${API_BASE_URL}/${projectId}/timeline`, {
+                headers
+            });
             if (!response.ok) throw new Error('Failed to fetch timeline');
             const data = await response.json();
             set({ timeline: data });
@@ -45,9 +49,10 @@ export const useMemoryStore = create<MemoryState>((set, get) => ({
 
     logManualEvent: async (projectId: string, event: Partial<MemoryEvent>) => {
         try {
+            const headers = await getAuthHeaders();
             const response = await fetch(`${API_BASE_URL}/${projectId}/log`, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers,
                 body: JSON.stringify(event)
             });
             if (!response.ok) throw new Error('Failed to log event');
@@ -59,3 +64,4 @@ export const useMemoryStore = create<MemoryState>((set, get) => ({
         }
     }
 }));
+

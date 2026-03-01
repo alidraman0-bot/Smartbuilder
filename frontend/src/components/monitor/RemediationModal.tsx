@@ -23,13 +23,11 @@ export default function RemediationModal({ isOpen, onClose, action, onConfirm }:
     const [step, setStep] = useState(0);
     const [logs, setLogs] = useState<string[]>([]);
 
-    useEffect(() => {
-        if (isOpen && action) {
-            setStep(0);
-            setLogs([]);
-            runSimulation();
-        }
-    }, [isOpen, action]);
+    const addLog = (msg: string) => {
+        setLogs(prev => [...prev, `[${new Date().toLocaleTimeString()}] ${msg}`]);
+    };
+
+    const wait = (ms: number) => new Promise(r => setTimeout(r, ms));
 
     const runSimulation = async () => {
         // Step 0: Analysis
@@ -68,11 +66,16 @@ export default function RemediationModal({ isOpen, onClose, action, onConfirm }:
         setStep(4);
     };
 
-    const addLog = (msg: string) => {
-        setLogs(prev => [...prev, `[${new Date().toLocaleTimeString()}] ${msg}`]);
-    };
-
-    const wait = (ms: number) => new Promise(r => setTimeout(r, ms));
+    useEffect(() => {
+        if (isOpen && action) {
+            const timer = setTimeout(() => {
+                setStep(0);
+                setLogs([]);
+                runSimulation();
+            }, 0);
+            return () => clearTimeout(timer);
+        }
+    }, [isOpen, action]);
 
     if (!isOpen || !action) return null;
 

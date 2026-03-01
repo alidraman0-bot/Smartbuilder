@@ -35,7 +35,12 @@ async def generate_business_plan(request: BusinessPlanRequest):
         )
         return result
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Business plan generation failed: {str(e)}")
+        import traceback
+        # Capture traceback
+        tb_str = traceback.format_exc()
+        import logging
+        logging.getLogger(__name__).error(tb_str)
+        raise HTTPException(status_code=500, detail=f"Business plan generation failed: {str(e)}\n\nTraceback:\n{tb_str}")
 
 @router.post("/prd")
 async def generate_prd(request: PRDRequest):
@@ -80,9 +85,10 @@ async def get_builder_artifacts(run_id: str):
     # In a real system, we'd fetch this from a persistent store or the orchestrator context
     # For now, we'll check the runner's orchestrator context
     if runner.orchestrator.run_id == run_id:
+        bp_prd = runner.orchestrator.context.get("business_plan_prd", {})
         return {
-            "business_plan": runner.orchestrator.context.get("business_plan"),
-            "prd": runner.orchestrator.context.get("prd")
+            "business_plan": bp_prd.get("business_plan"),
+            "prd": bp_prd.get("prd")
         }
     
     raise HTTPException(status_code=404, detail="Run not found or artifacts not generated")

@@ -10,6 +10,7 @@
  */
 
 import { create } from 'zustand';
+import { getAuthHeaders } from '@/utils/supabase/auth';
 
 export type BuilderState = 'S0' | 'S1' | 'S2' | 'S3' | 'S4' | 'S5' | 'S6';
 export type BuildMode = 'UI' | 'Logic' | 'Data';
@@ -102,9 +103,10 @@ export const useMvpBuilderStore = create<MvpBuilderState>((set, get) => ({
         set({ isLoading: true });
 
         try {
+            const headers = await getAuthHeaders();
             const response = await fetch('/api/v1/mvp-builder/init', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers,
                 body: JSON.stringify({ run_id: runId, prd, research, idea })
             });
 
@@ -137,8 +139,10 @@ export const useMvpBuilderStore = create<MvpBuilderState>((set, get) => ({
 
     fetchSessionState: async (sessionId: string) => {
         try {
+            const headers = await getAuthHeaders();
             const response = await fetch(
-                `/api/v1/mvp-builder/${sessionId}/state`
+                `/api/v1/mvp-builder/${sessionId}/state`,
+                { headers }
             );
 
             if (!response.ok) {
@@ -182,11 +186,12 @@ export const useMvpBuilderStore = create<MvpBuilderState>((set, get) => ({
         set({ isLoading: true });
 
         try {
+            const headers = await getAuthHeaders();
             const response = await fetch(
                 `/api/v1/mvp-builder/${sessionId}/submit-idea`,
                 {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers,
                     body: JSON.stringify({ idea })
                 }
             );
@@ -214,11 +219,12 @@ export const useMvpBuilderStore = create<MvpBuilderState>((set, get) => ({
         set({ isLoading: true });
 
         try {
+            const headers = await getAuthHeaders();
             const response = await fetch(
                 `/api/v1/mvp-builder/${sessionId}/iterate`,
                 {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers,
                     body: JSON.stringify({
                         prompt,
                         build_mode: buildMode || get().buildMode
@@ -253,9 +259,13 @@ export const useMvpBuilderStore = create<MvpBuilderState>((set, get) => ({
         set({ isLoading: true });
 
         try {
+            const headers = await getAuthHeaders();
             const response = await fetch(
                 `/api/v1/mvp-builder/${sessionId}/freeze`,
-                { method: 'POST' }
+                {
+                    method: 'POST',
+                    headers
+                }
             );
 
             if (!response.ok) {
@@ -278,9 +288,13 @@ export const useMvpBuilderStore = create<MvpBuilderState>((set, get) => ({
         set({ isLoading: true });
 
         try {
+            const headers = await getAuthHeaders();
             const response = await fetch(
                 `/api/v1/mvp-builder/${sessionId}/revert`,
-                { method: 'POST' }
+                {
+                    method: 'POST',
+                    headers
+                }
             );
 
             if (!response.ok) {
@@ -343,3 +357,4 @@ export const useMvpBuilderStore = create<MvpBuilderState>((set, get) => ({
         }
     }
 }));
+

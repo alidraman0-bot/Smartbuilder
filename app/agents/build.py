@@ -1,8 +1,7 @@
 import logging
 import json
 from typing import Dict, Any, List
-from openai import AsyncOpenAI
-from app.core.config import settings
+from app.core.ai_client import get_ai_client
 from app.agents.base import BaseAgent
 from app.models.schemas import BuildOutput, DataModel, APIEndpoint, PageRoute
 
@@ -11,7 +10,7 @@ logger = logging.getLogger(__name__)
 class BuildAgent(BaseAgent):
     def __init__(self):
         super().__init__(name="Build Agent")
-        self.client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
+        self.ai_client = get_ai_client()
 
     async def execute(self, context: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -47,18 +46,18 @@ class BuildAgent(BaseAgent):
         """
 
         try:
-            if not settings.OPENAI_API_KEY:
+            from app.core.config import settings
+            if not self.ai_client.has_provider(settings.AI_PROVIDER) and not settings.OPENAI_API_KEY:
                 output = self._get_mock_build_plan(prd)
             else:
-                response = await self.client.chat.completions.create(
-                    model=settings.MODEL_NAME,
+                response = await self.ai_client.chat_completion(
                     messages=[
                         {"role": "system", "content": self._get_system_prompt()},
                         {"role": "user", "content": prompt}
                     ],
                     response_format={"type": "json_object"}
                 )
-                output = json.loads(response.choices[0].message.content)
+                output = json.loads(response["content"])
 
             # Validation
             validated = BuildOutput(**output)

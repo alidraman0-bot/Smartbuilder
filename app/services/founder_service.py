@@ -1,4 +1,3 @@
-```python
 import logging
 import random
 import datetime
@@ -140,7 +139,7 @@ class FounderService:
             "risks": self.risks
         }
 
-    async def update_feature_flag(self, flag: str, value: boolean) -> Dict[str, Any]:
+    async def update_feature_flag(self, flag: str, value: bool) -> Dict[str, Any]:
         if flag in self.feature_flags:
             self.feature_flags[flag] = value
             logger.info(f"AUDIT: Founder updated feature flag {flag} to {value}")

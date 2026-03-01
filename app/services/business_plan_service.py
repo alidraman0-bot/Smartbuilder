@@ -128,7 +128,7 @@ Generate a comprehensive business plan in JSON format with the following structu
       "som": 0,
       "currency": "USD"
     },
-    "velocity_of_market_creation": "Growing | Stable | Declining",
+    "velocity_of_market_creation": "Accelerating | Steady | Decelerating",
     "demand_inflection_points": [
       {
         "year": 2024,
@@ -175,29 +175,42 @@ Generate a comprehensive business plan in JSON format with the following structu
     "required_reinvestment_cycles": 0
   },
   "monetization_economics": {
-    "willingness_to_pay_signals": ["Evidence of WTP"],
-    "price_sensitivity_bands": {
-      "low": 0,
-      "optimal": 0,
-      "high": 0,
-      "currency": "USD"
-    },
-    "revenue_lag_timeline": "Time from launch to first revenue",
-    "cost_curve_analysis": "How costs scale with growth",
-    "makes_money_without_fantasy": true
+    "willingness_to_pay_signals": [
+      {
+        "source": "Source name",
+        "signal": "Description of signal",
+        "price_point": 0,
+        "currency": "USD"
+      }
+    ],
+    "price_sensitivity_bands": [
+      {
+        "tier": "Starter | Pro | Enterprise",
+        "price_range_min": 0,
+        "price_range_max": 0,
+        "expected_conversion": 0
+      }
+    ],
+    "revenue_lag_vs_cost_curve": "How revenue lag intersects with cost scaling",
+    "reality_check_passed": true
   },
   "risks_mitigation": {
-    "risks": [
+    "risk_categories": [
       {
         "category": "Structural | Executional | External",
-        "description": "Risk description",
-        "severity": "Low | Medium | High | Critical",
-        "mitigation": {
-          "strategy": "How to mitigate",
-          "cost": "Resource requirement",
-          "complexity": "Low | Medium | High",
-          "time": "Timeline"
-        }
+        "risks": [
+          {
+            "description": "Risk description",
+            "probability": "Low | Medium | High",
+            "impact": "Low | Medium | High",
+            "mitigation": {
+              "strategy": "How to mitigate",
+              "cost": "Resource requirement",
+              "complexity": 1-10,
+              "time": "Timeline"
+            }
+          }
+        ]
       }
     ]
   },
@@ -208,8 +221,7 @@ Generate a comprehensive business plan in JSON format with the following structu
       "strong_signals": ["Positive factors"],
       "weak_signals": ["Concerning factors"],
       "unknowns": ["What still needs validation"]
-    },
-    "next_action": "Specific recommended action"
+    }
   },
   "metadata": {
     "generated_at": "ISO timestamp",
@@ -370,7 +382,7 @@ print(json.dumps(results))
                     "som": 600000000,
                     "currency": "USD"
                 },
-                "velocity_of_market_creation": "Growing",
+                "velocity_of_market_creation": "Steady",
                 "demand_inflection_points": [
                     {
                         "year": 2024,
@@ -430,7 +442,7 @@ print(json.dumps(results))
                         "description": "Integration with existing tools requires technical setup"
                     }
                 ],
-                "is_weak": false,
+                "is_weak": False,
                 "weakness_explanation": "",
                 "suggested_alternatives": []
             },
@@ -458,54 +470,69 @@ print(json.dumps(results))
             },
             "monetization_economics": {
                 "willingness_to_pay_signals": [
-                    "Current manual process costs $500/user/month",
-                    "Competitors charge $200-400/user/month",
-                    "Beta users expressed willingness to pay $300/month"
+                    {
+                        "source": "Manual process analysis",
+                        "signal": "Current manual process costs $500/user/month",
+                        "price_point": 500,
+                        "currency": "USD"
+                    },
+                    {
+                        "source": "Competitive analysis",
+                        "signal": "Competitors charge $200-400/user/month",
+                        "price_point": 300,
+                        "currency": "USD"
+                    }
                 ],
-                "price_sensitivity_bands": {
-                    "low": 99,
-                    "optimal": 299,
-                    "high": 499,
-                    "currency": "USD"
-                },
-                "revenue_lag_timeline": "3-6 months from launch to first recurring revenue",
-                "cost_curve_analysis": "Favorable unit economics - COGS decrease with scale due to AI model efficiency gains",
-                "makes_money_without_fantasy": True
+                "price_sensitivity_bands": [
+                    {
+                        "tier": "Starter",
+                        "price_range_min": 49,
+                        "price_range_max": 149,
+                        "expected_conversion": 5
+                    },
+                    {
+                        "tier": "Pro",
+                        "price_range_min": 199,
+                        "price_range_max": 399,
+                        "expected_conversion": 2
+                    }
+                ],
+                "revenue_lag_vs_cost_curve": "Favorable unit economics - COGS decrease with scale due to AI model efficiency gains",
+                "reality_check_passed": True
             },
             "risks_mitigation": {
-                "risks": [
+                "risk_categories": [
                     {
                         "category": "Structural",
-                        "description": "AI model accuracy below customer expectations",
-                        "severity": "High",
-                        "mitigation": {
-                            "strategy": "Human-in-the-loop validation layer + continuous model retraining",
-                            "cost": "20% of dev budget",
-                            "complexity": "Medium",
-                            "time": "Ongoing"
-                        }
+                        "risks": [
+                            {
+                                "description": "AI model accuracy below customer expectations",
+                                "probability": "High",
+                                "impact": "High",
+                                "mitigation": {
+                                    "strategy": "Human-in-the-loop validation layer + continuous model retraining",
+                                    "cost": "20% of dev budget",
+                                    "complexity": 7,
+                                    "time": "Ongoing"
+                                }
+                            }
+                        ]
                     },
                     {
                         "category": "Executional",
-                        "description": "Customer acquisition cost exceeds projections",
-                        "severity": "Medium",
-                        "mitigation": {
-                            "strategy": "Focus on viral growth mechanisms and community building",
-                            "cost": "10% of budget for content marketing",
-                            "complexity": "Low",
-                            "time": "3 months"
-                        }
-                    },
-                    {
-                        "category": "External",
-                        "description": "Regulatory changes restrict AI automation",
-                        "severity": "Medium",
-                        "mitigation": {
-                            "strategy": "Compliance-first architecture + regulatory monitoring",
-                            "cost": "5% of budget for legal counsel",
-                            "complexity": "Low",
-                            "time": "Ongoing"
-                        }
+                        "risks": [
+                            {
+                                "description": "Customer acquisition cost exceeds projections",
+                                "probability": "Medium",
+                                "impact": "Medium",
+                                "mitigation": {
+                                    "strategy": "Focus on viral growth mechanisms and community building",
+                                    "cost": "10% of budget for content marketing",
+                                    "complexity": 4,
+                                    "time": "3 months"
+                                }
+                            }
+                        ]
                     }
                 ]
             },
@@ -529,8 +556,7 @@ print(json.dumps(results))
                         "Optimal pricing tier structure",
                         "Speed of competitive response"
                     ]
-                },
-                "next_action": "Proceed to PRD development. Prioritize MVP features that validate monetization assumptions."
+                }
             },
             "metadata": {
                 "generated_at": "2024-01-16T12:00:00Z",

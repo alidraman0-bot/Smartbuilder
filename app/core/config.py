@@ -3,9 +3,9 @@ from typing import Optional
 
 class Settings(BaseSettings):
     # AI Provider
-    AI_PROVIDER: str = "openai"
+    AI_PROVIDER: str = "deepseek"
     ENABLE_FALLBACK: bool = True
-    FALLBACK_PROVIDERS_LIST: list[str] = ["openai", "anthropic", "gemini"]
+    FALLBACK_PROVIDERS_LIST: list[str] = ["deepseek", "openai", "anthropic", "gemini"]
 
     # OpenAI
     OPENAI_API_KEY: Optional[str] = None
@@ -24,7 +24,8 @@ class Settings(BaseSettings):
 
     # Deepseek
     DEEPSEEK_API_KEY: Optional[str] = None
-    DEEPSEEK_MODEL: str = "deepseek-coder"
+    DEEPSEEK_MODEL: str = "deepseek-chat"
+    DEEPSEEK_BASE_URL: str = "https://api.deepseek.com"
 
     # Advanced
     TEMPERATURE: float = 0.7
@@ -35,9 +36,23 @@ class Settings(BaseSettings):
     SERPAPI_API_KEY: Optional[str] = None
     TESTSPRITE_API_KEY: Optional[str] = None
     
+    # Reddit
+    REDDIT_CLIENT_ID: Optional[str] = None
+    REDDIT_CLIENT_SECRET: Optional[str] = None
+    REDDIT_USER_AGENT: str = "Smartbuilder/1.0"
+    
+    # RSS Feeds
+    PRODUCT_HUNT_RSS_URL: str = "https://www.producthunt.com/feed"
+    INDIE_HACKERS_RSS_URL: str = "https://www.indiehackers.com/feed"
+    
     # Supabase
     SUPABASE_URL: Optional[str] = None
     SUPABASE_KEY: Optional[str] = None
+    SUPABASE_SERVICE_ROLE_KEY: Optional[str] = None
+    
+    # Paystack (Billing & Payments)
+    PAYSTACK_SECRET_KEY: Optional[str] = None
+    PAYSTACK_PUBLIC_KEY: Optional[str] = None
     
     @property
     def has_ai_key(self) -> bool:
@@ -45,6 +60,7 @@ class Settings(BaseSettings):
             self.OPENAI_API_KEY, 
             self.ANTHROPIC_API_KEY, 
             self.GOOGLE_API_KEY,
+            self.DEEPSEEK_API_KEY,
             self.TESTSPRITE_API_KEY
         ])
 

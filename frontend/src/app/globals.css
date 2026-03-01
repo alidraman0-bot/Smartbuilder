@@ -26,13 +26,13 @@
   --color-primary-10: rgba(99, 102, 241, 0.1);
   --color-primary-glow: rgba(99, 102, 241, 0.5);
   --color-primary-glow-strong: rgba(99, 102, 241, 0.7);
-  
+
   /* Accent Colors - Modern Purple/Cyan */
   --color-accent: #8b5cf6;
   --color-accent-light: #a78bfa;
   --color-accent-cyan: #06b6d4;
   --color-accent-pink: #ec4899;
-  
+
   /* Text Hierarchy - Enhanced Contrast */
   --color-text-primary: #ffffff;
   --color-text-secondary: #b4b4c4;
@@ -56,9 +56,9 @@
   --gradient-success: linear-gradient(135deg, #10b981 0%, #14b8a6 100%);
   --gradient-ai: linear-gradient(135deg, #6366f1 0%, #8b5cf6 25%, #ec4899 50%, #06b6d4 75%, #6366f1 100%);
   --gradient-mesh: radial-gradient(at 0% 0%, rgba(99, 102, 241, 0.2) 0px, transparent 50%),
-                    radial-gradient(at 100% 0%, rgba(139, 92, 246, 0.2) 0px, transparent 50%),
-                    radial-gradient(at 100% 100%, rgba(236, 72, 153, 0.15) 0px, transparent 50%),
-                    radial-gradient(at 0% 100%, rgba(6, 182, 212, 0.15) 0px, transparent 50%);
+    radial-gradient(at 100% 0%, rgba(139, 92, 246, 0.2) 0px, transparent 50%),
+    radial-gradient(at 100% 100%, rgba(236, 72, 153, 0.15) 0px, transparent 50%),
+    radial-gradient(at 0% 100%, rgba(6, 182, 212, 0.15) 0px, transparent 50%);
 
   /* Animation Overrides - Smooth & Professional */
   --animate-pulse-slow: pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite;
@@ -70,16 +70,22 @@
 }
 
 @keyframes fadeIn {
-  from { opacity: 0; }
-  to { opacity: 1; }
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
 }
 
 @keyframes slideUp {
-  from { 
+  from {
     opacity: 0;
     transform: translateY(20px);
   }
-  to { 
+
+  to {
     opacity: 1;
     transform: translateY(0);
   }
@@ -90,6 +96,7 @@
     opacity: 0;
     transform: scale(0.95);
   }
+
   to {
     opacity: 1;
     transform: scale(1);
@@ -100,6 +107,7 @@
   0% {
     transform: translateX(-100%);
   }
+
   100% {
     transform: translateX(100%);
   }
@@ -144,7 +152,7 @@ body {
   backdrop-filter: blur(16px) saturate(180%);
   -webkit-backdrop-filter: blur(16px) saturate(180%);
   border: 1px solid rgba(255, 255, 255, 0.08);
-  box-shadow: 
+  box-shadow:
     0 8px 32px -4px rgba(0, 0, 0, 0.4),
     inset 0 1px 0 rgba(255, 255, 255, 0.05);
   transition: all 0.4s cubic-bezier(0.23, 1, 0.32, 1);
@@ -159,11 +167,10 @@ body {
   left: 0;
   right: 0;
   height: 1px;
-  background: linear-gradient(90deg, 
-    transparent 0%,
-    rgba(255, 255, 255, 0.1) 50%,
-    transparent 100%
-  );
+  background: linear-gradient(90deg,
+      transparent 0%,
+      rgba(255, 255, 255, 0.1) 50%,
+      transparent 100%);
   opacity: 0;
   transition: opacity 0.4s;
 }
@@ -172,7 +179,7 @@ body {
   background: linear-gradient(135deg, rgba(255, 255, 255, 0.08) 0%, rgba(255, 255, 255, 0.03) 100%);
   border-color: rgba(255, 255, 255, 0.15);
   transform: translateY(-4px);
-  box-shadow: 
+  box-shadow:
     0 16px 48px -8px rgba(0, 0, 0, 0.5),
     0 0 0 1px rgba(99, 102, 241, 0.1),
     inset 0 1px 0 rgba(255, 255, 255, 0.1);
@@ -184,13 +191,13 @@ body {
 
 /* Enhanced Glow Effects */
 .glow-primary {
-  box-shadow: 
+  box-shadow:
     0 0 24px -6px var(--color-primary-glow),
     0 4px 12px -2px rgba(99, 102, 241, 0.2);
 }
 
 .glow-primary-strong {
-  box-shadow: 
+  box-shadow:
     0 0 32px -8px var(--color-primary-glow-strong),
     0 8px 24px -4px rgba(99, 102, 241, 0.3);
 }
@@ -216,7 +223,7 @@ body {
 }
 
 /* Premium Noise Texture Overlay */
-.noise-overlay {
+/* .noise-overlay {
   position: fixed;
   inset: 0;
   z-index: 100;
@@ -224,10 +231,10 @@ body {
   opacity: 0.02;
   background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 400 400' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E");
   mix-blend-mode: overlay;
-}
+} */
 
 /* Animated Gradient Background */
-.gradient-mesh {
+/* .gradient-mesh {
   position: fixed;
   inset: 0;
   z-index: 0;
@@ -239,13 +246,16 @@ body {
     radial-gradient(at 100% 100%, rgba(236, 72, 153, 0.1) 0px, transparent 50%),
     radial-gradient(at 0% 100%, rgba(59, 130, 246, 0.1) 0px, transparent 50%);
   animation: gradientShift 20s ease infinite;
-}
+} */
 
 @keyframes gradientShift {
-  0%, 100% {
+
+  0%,
+  100% {
     opacity: 0.4;
     transform: scale(1);
   }
+
   50% {
     opacity: 0.6;
     transform: scale(1.1);

@@ -25,6 +25,8 @@ export interface Deployment {
     url: string | null;
     version: string;
     triggered_by: string; // user email or "Smartbuilder AI"
+    run_id?: string;
+    build_id?: string;
 }
 
 export interface DeploymentLog {

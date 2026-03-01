@@ -2,7 +2,7 @@
 
 import React from 'react';
 import { useFounderStore } from '@/store/useFounderStore';
-import { GitBranch, Github, HardDrive, ShieldExclamation, Terminal } from 'lucide-react';
+import { GitBranch, Github, HardDrive, ShieldAlert, Terminal } from 'lucide-react';
 import clsx from 'clsx';
 
 export default function VcsCodeHealth() {
@@ -71,7 +71,7 @@ export default function VcsCodeHealth() {
 
                     <div className="pt-4 border-t border-gray-100">
                         <div className="flex items-center gap-2 text-gray-400">
-                            <ShieldExclamation className="w-3 h-3" />
+                            <ShieldAlert className="w-3 h-3" />
                             <span className="text-[9px] font-bold uppercase tracking-widest">
                                 AI WRITE CHANNEL: {vcsHealth.lock_status}
                             </span>

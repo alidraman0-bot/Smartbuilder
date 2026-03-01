@@ -26,42 +26,56 @@ class InterpreterService:
         if not self.enabled:
             return self._mock_analysis(code, data)
 
-        try:
-            async with Sandbox(api_key=self.api_key) as sandbox:
-                # 1. Inject data into the sandbox as a JSON file
-                await sandbox.files.write("data.json", json.dumps(data))
+        def _sync_analysis():
+            sandbox = None
+            try:
+                # Based on diagnostics, Sandbox.create is synchronous in this environment
+                sandbox = Sandbox.create(api_key=self.api_key)
+                sandbox.files.write("data.json", json.dumps(data))
+                execution = sandbox.run_code(code)
                 
-                # 2. Execute the analyst code
-                # The code should expect data.json and print its final result as JSON
-                execution = await sandbox.run_code(code)
-                
-                if execution.error:
-                    logger.error(f"E2B Execution Error: {execution.error.name} - {execution.error.value}")
-                    return {"error": execution.error.value, "status": "failed"}
-
                 # 3. Extract results (stdout or results)
                 # We assume the code prints the final JSON result
-                results_json = execution.text.strip()
+                results_json = execution.text.strip() if execution.text else ""
+                
+                # If text is empty, check stdout
+                if not results_json and execution.logs.stdout:
+                    # Collect all stdout parts
+                    results_json = "".join(execution.logs.stdout).strip()
+
+                if execution.error:
+                    return {"error": execution.error.value, "status": "failed"}
+
                 try:
-                    analysis_results = json.loads(results_json)
+                    analysis_results = json.loads(results_json) if results_json else {"status": "empty"}
                 except json.JSONDecodeError:
                     analysis_results = {"raw_output": results_json, "status": "partial"}
 
-                # 4. Handle Visualizations (if any images were generated)
                 charts = []
                 for result in execution.results:
-                    if result.png:
+                    if hasattr(result, 'png') and result.png:
                         charts.append({"type": "png", "data": result.png})
-                    elif result.svg:
+                    elif hasattr(result, 'svg') and result.svg:
                         charts.append({"type": "svg", "data": result.svg})
 
                 return {
                     "results": analysis_results,
                     "charts": charts,
-                    "status": "success",
-                    "execution_time": execution.logs.stdout # or other metric
+                    "status": "success"
                 }
+            except Exception as e:
+                logger.error(f"E2B Sync Analysis Error: {e}")
+                raise e
+            finally:
+                if sandbox:
+                    try:
+                        sandbox.kill()
+                    except:
+                        pass
 
+        try:
+            loop = asyncio.get_event_loop()
+            return await loop.run_in_executor(None, _sync_analysis)
         except Exception as e:
             logger.error(f"Failed to run E2B analysis: {e}")
             return {"error": str(e), "status": "failed"}

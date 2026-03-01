@@ -2,8 +2,7 @@ import uuid
 import json
 import logging
 from typing import Dict, Any, List
-from openai import AsyncOpenAI
-from app.core.config import settings
+from app.core.ai_client import get_ai_client
 from app.agents.base import BaseAgent
 from app.models.schemas import OpportunityOutput, StartupIdea
 
@@ -12,7 +11,7 @@ logger = logging.getLogger(__name__)
 class OpportunityAgent(BaseAgent):
     def __init__(self):
         super().__init__(name="Opportunity Agent")
-        self.client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
+        self.ai_client = get_ai_client()
 
     async def execute(self, context: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -58,12 +57,11 @@ class OpportunityAgent(BaseAgent):
         """
 
         try:
-            if not settings.OPENAI_API_KEY:
-                # Use mock if no API key
+            if not self.ai_client.has_provider(settings.AI_PROVIDER) and not settings.OPENAI_API_KEY:
+                # Use mock if no AI keys
                 ideas = self._get_mock_ideas()
             else:
-                response = await self.client.chat.completions.create(
-                    model=settings.MODEL_NAME,
+                response = await self.ai_client.chat_completion(
                     messages=[
                         {"role": "system", "content": self._get_system_prompt()},
                         {"role": "user", "content": prompt}
@@ -71,7 +69,7 @@ class OpportunityAgent(BaseAgent):
                     response_format={"type": "json_object"}
                 )
                 
-                content = response.choices[0].message.content
+                content = response["content"]
                 data = json.loads(content)
                 ideas = data.get("ideas", []) if isinstance(data, dict) and "ideas" in data else data
                 if not isinstance(ideas, list):

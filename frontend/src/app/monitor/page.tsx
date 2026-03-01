@@ -10,6 +10,7 @@ import {
 } from 'lucide-react';
 import SystemActionsPanel from '@/components/monitor/SystemActionsPanel';
 import IncidentTimeline from '@/components/monitor/IncidentTimeline';
+import StartupPipeline from '@/components/layout/StartupPipeline';
 import clsx from 'clsx';
 import { twMerge } from 'tailwind-merge';
 
@@ -30,7 +31,8 @@ export default function MonitorPage() {
             run.startMonitoring(run.deployment_id);
             setTimeout(() => setIsLoading(false), 800);
         } else {
-            setIsLoading(false);
+            const timer = setTimeout(() => setIsLoading(false), 0);
+            return () => clearTimeout(timer);
         }
     }, [run.deployment_id]);
 
@@ -57,71 +59,78 @@ export default function MonitorPage() {
     return (
         <div className="min-h-screen bg-[#09090b] text-white selection:bg-blue-500/20">
             {/* 1. PROJECT CONTEXT BAR */}
-            <div className="sticky top-0 z-50 backdrop-blur-md bg-[#09090b]/80 border-b border-[#27272a] px-8 py-4 flex items-center justify-between">
-                <div className="flex items-center gap-4">
-                    <h1 className="text-sm font-semibold tracking-tight text-white/90">
-                        {run.research?.idea?.title || 'Smartbuilder Project'}
-                    </h1>
-                    <span className="text-xs font-mono text-[#525252] px-2 py-0.5 border border-[#27272a] rounded">
-                        Production
-                    </span>
-                    <div className={cn(
-                        "flex items-center gap-2 px-2 py-0.5 rounded-full text-xs font-medium border",
-                        health === 'healthy' ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20" :
-                            health === 'degraded' ? "bg-amber-500/10 text-amber-400 border-amber-500/20" :
-                                "bg-red-500/10 text-red-400 border-red-500/20"
-                    )}>
-                        <span className="relative flex h-2 w-2">
-                            <span className={cn(
-                                "animate-ping absolute inline-flex h-full w-full rounded-full opacity-75",
-                                health === 'healthy' ? "bg-emerald-400" :
-                                    health === 'degraded' ? "bg-amber-400" : "bg-red-400"
-                            )}></span>
-                            <span className={cn(
-                                "relative inline-flex rounded-full h-2 w-2",
-                                health === 'healthy' ? "bg-emerald-500" :
-                                    health === 'degraded' ? "bg-amber-500" : "bg-red-500"
-                            )}></span>
+            <div className="sticky top-0 z-50 backdrop-blur-md bg-[#09090b]/80 border-b border-[#27272a] px-8 py-4 flex flex-col space-y-4">
+                <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-4">
+                        <h1 className="text-sm font-semibold tracking-tight text-white/90">
+                            {(run.research as any)?.idea?.title || 'Smartbuilder Project'}
+                        </h1>
+                        <span className="text-xs font-mono text-[#525252] px-2 py-0.5 border border-[#27272a] rounded">
+                            Production
                         </span>
-                        {health === 'healthy' ? 'Healthy' : health === 'degraded' ? 'Degraded' : 'Critical'}
+                        <div className={cn(
+                            "flex items-center gap-2 px-2 py-0.5 rounded-full text-xs font-medium border",
+                            health === 'healthy' ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20" :
+                                health === 'degraded' ? "bg-amber-500/10 text-amber-400 border-amber-500/20" :
+                                    "bg-red-500/10 text-red-400 border-red-500/20"
+                        )}>
+                            <span className="relative flex h-2 w-2">
+                                <span className={cn(
+                                    "animate-ping absolute inline-flex h-full w-full rounded-full opacity-75",
+                                    health === 'healthy' ? "bg-emerald-400" :
+                                        health === 'degraded' ? "bg-amber-400" : "bg-red-400"
+                                )}></span>
+                                <span className={cn(
+                                    "relative inline-flex rounded-full h-2 w-2",
+                                    health === 'healthy' ? "bg-emerald-500" :
+                                        health === 'degraded' ? "bg-amber-500" : "bg-red-500"
+                                )}></span>
+                            </span>
+                            {health === 'healthy' ? 'Healthy' : health === 'degraded' ? 'Degraded' : 'Critical'}
+                        </div>
+                    </div>
+
+                    <div className="flex items-center gap-6">
+                        {/* View Toggle */}
+                        <div className="flex bg-[#18181b] p-1 rounded-lg border border-[#27272a]">
+                            <button
+                                onClick={() => setViewMode('executive')}
+                                className={cn(
+                                    "px-3 py-1 text-xs font-medium rounded-md transition-all",
+                                    viewMode === 'executive' ? "bg-[#27272a] text-white shadow-sm" : "text-[#525252] hover:text-[#a1a1aa]"
+                                )}
+                            >
+                                Executive
+                            </button>
+                            <button
+                                onClick={() => setViewMode('technical')}
+                                className={cn(
+                                    "px-3 py-1 text-xs font-medium rounded-md transition-all",
+                                    viewMode === 'technical' ? "bg-[#27272a] text-white shadow-sm" : "text-[#525252] hover:text-[#a1a1aa]"
+                                )}
+                            >
+                                Technical
+                            </button>
+                            <button
+                                onClick={() => setViewMode('compliance')}
+                                className={cn(
+                                    "px-3 py-1 text-xs font-medium rounded-md transition-all",
+                                    viewMode === 'compliance' ? "bg-[#27272a] text-white shadow-sm" : "text-[#525252] hover:text-[#a1a1aa]"
+                                )}
+                            >
+                                Compliance
+                            </button>
+                        </div>
+
+                        <div className="text-xs font-mono text-[#525252]">
+                            Last verified: <span className="text-[#a1a1aa]">Just now</span>
+                        </div>
                     </div>
                 </div>
 
-                <div className="flex items-center gap-6">
-                    {/* View Toggle */}
-                    <div className="flex bg-[#18181b] p-1 rounded-lg border border-[#27272a]">
-                        <button
-                            onClick={() => setViewMode('executive')}
-                            className={cn(
-                                "px-3 py-1 text-xs font-medium rounded-md transition-all",
-                                viewMode === 'executive' ? "bg-[#27272a] text-white shadow-sm" : "text-[#525252] hover:text-[#a1a1aa]"
-                            )}
-                        >
-                            Executive
-                        </button>
-                        <button
-                            onClick={() => setViewMode('technical')}
-                            className={cn(
-                                "px-3 py-1 text-xs font-medium rounded-md transition-all",
-                                viewMode === 'technical' ? "bg-[#27272a] text-white shadow-sm" : "text-[#525252] hover:text-[#a1a1aa]"
-                            )}
-                        >
-                            Technical
-                        </button>
-                        <button
-                            onClick={() => setViewMode('compliance')}
-                            className={cn(
-                                "px-3 py-1 text-xs font-medium rounded-md transition-all",
-                                viewMode === 'compliance' ? "bg-[#27272a] text-white shadow-sm" : "text-[#525252] hover:text-[#a1a1aa]"
-                            )}
-                        >
-                            Compliance
-                        </button>
-                    </div>
-
-                    <div className="text-xs font-mono text-[#525252]">
-                        Last verified: <span className="text-[#a1a1aa]">Just now</span>
-                    </div>
+                {/* Pipeline Tracker */}
+                <div className="max-w-4xl mx-auto w-full bg-white/[0.02] border border-white/5 rounded-2xl p-0.5">
+                    <StartupPipeline currentStage="monitor" />
                 </div>
             </div>
 
@@ -221,7 +230,7 @@ export default function MonitorPage() {
                                 </div>
 
                                 {/* 0. AUTO-REMEDIATION PANEL (Only visible if actions exist) */}
-                                <SystemActionsPanel actions={metrics.remediation_actions || []} />
+                                <SystemActionsPanel actions={(metrics.remediation_actions as any) || []} />
 
                                 <div className="p-6 rounded-2xl border border-[#27272a] bg-[#0c0c0e] space-y-6">
                                     <div className="space-y-1">
@@ -233,7 +242,7 @@ export default function MonitorPage() {
 
                                     <div className="h-24 flex items-end gap-1 pt-4 border-t border-[#27272a]">
                                         {[...Array(40)].map((_, i) => {
-                                            const height = 20 + Math.random() * 60;
+                                            const height = 20 + ((i * 13) % 61);
                                             return (
                                                 <div
                                                     key={i}
@@ -261,7 +270,7 @@ export default function MonitorPage() {
 
                             {/* 7. INCIDENT TIMELINE (Replaces simple Actions for now) */}
                             <div className="col-span-4">
-                                <IncidentTimeline incidents={metrics.incidents || []} />
+                                <IncidentTimeline incidents={(metrics.incidents as any) || []} />
                             </div>
                         </div>
 

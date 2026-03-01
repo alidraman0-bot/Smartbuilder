@@ -4,6 +4,7 @@ import "./globals.css";
 import DashboardWrapper from "@/components/DashboardWrapper";
 
 export const metadata: Metadata = {
+  metadataBase: new URL(process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"),
   title: "Smartbuilder | Autonomous Startup Generation",
   description: "Generate, build, and deploy startups autonomously using FSM-driven orchestration and multi-provider AI.",
   keywords: ["startup generation", "autonomous building", "AI orchestration", "FSM", "MVP builder"],
@@ -37,6 +38,8 @@ export const metadata: Metadata = {
   },
 };
 
+import Script from "next/script";
+
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -45,6 +48,7 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <body className="antialiased bg-black selection:bg-indigo-500/30">
+        <Script src="https://js.paystack.co/v1/inline.js" strategy="lazyOnload" />
         <DashboardWrapper>
           {children}
         </DashboardWrapper>
