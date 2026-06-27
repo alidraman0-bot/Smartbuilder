@@ -68,12 +68,26 @@ export default function SignupPage() {
                 <motion.div
                     initial={{ opacity: 0, scale: 0.95 }}
                     animate={{ opacity: 1, scale: 1 }}
-                    className="text-center z-10"
+                    className="text-center z-10 max-w-md"
                 >
                     <CheckCircle className="w-12 h-12 text-green-500 mx-auto mb-6" />
                     <h2 className="text-2xl font-semibold text-white mb-2">Check your inbox</h2>
-                    <p className="text-[#8a8a9a]">We've sent a confirmation link to <strong>{email}</strong></p>
-                    <div className="mt-8">
+                    <p className="text-[#8a8a9a] mb-6">We've sent a confirmation link to <strong>{email}</strong></p>
+                    
+                    {/* Device compatibility notice */}
+                    <div className="bg-indigo-500/5 border border-indigo-500/10 rounded-xl p-4 mb-6 text-left flex items-start space-x-3">
+                        <svg className="w-5 h-5 text-indigo-400 mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                        </svg>
+                        <div>
+                            <h4 className="text-xs font-bold text-white uppercase tracking-wider mb-1">Desktop Workspace Required</h4>
+                            <p className="text-xs text-[#8a8a9a] leading-relaxed">
+                                To use the Smartbuilder dashboard and build your MVP, please log in from a <strong>laptop or desktop computer</strong>. The editor and orchestrator require a larger screen.
+                            </p>
+                        </div>
+                    </div>
+
+                    <div>
                         <Link href="/login" className="text-indigo-400 hover:text-indigo-300 transition-colors font-medium">
                             Return to Sign In
                         </Link>

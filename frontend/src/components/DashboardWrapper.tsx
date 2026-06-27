@@ -20,12 +20,24 @@ export default function DashboardWrapper({ children }: { children: React.ReactNo
         p === '/' ? pathname === '/' : pathname === p || pathname?.startsWith(p + '/')
     );
     const [isSidebarCollapsed, setIsSidebarCollapsed] = React.useState(false);
+    const [isMounted, setIsMounted] = React.useState(false);
+    const [isMobile, setIsMobile] = React.useState(false);
 
     useEffect(() => {
+        setIsMounted(true);
         if (!isLandingPage) {
             return startPolling();
         }
     }, [startPolling, isLandingPage]);
+
+    useEffect(() => {
+        const handleResize = () => {
+            setIsMobile(window.innerWidth < 1024);
+        };
+        handleResize();
+        window.addEventListener('resize', handleResize);
+        return () => window.removeEventListener('resize', handleResize);
+    }, []);
 
     if (isLandingPage) {
         return (
@@ -34,6 +46,36 @@ export default function DashboardWrapper({ children }: { children: React.ReactNo
                 <main className="relative z-10 w-full">
                     {children}
                 </main>
+            </div>
+        );
+    }
+
+    if (isMounted && isMobile) {
+        return (
+            <div className="h-screen w-full bg-[#06060a] flex items-center justify-center p-6 text-white overflow-hidden relative">
+                {/* Ambient Background Glows */}
+                <div className="absolute top-[-10%] left-[-10%] w-[50%] h-[50%] bg-indigo-500/10 blur-[120px] rounded-full z-0" />
+                <div className="absolute bottom-[-10%] right-[-10%] w-[50%] h-[50%] bg-purple-500/10 blur-[120px] rounded-full z-0" />
+                <div className="noise-overlay opacity-[0.03] absolute inset-0 pointer-events-none z-0" />
+
+                <div className="text-center z-10 max-w-sm px-4">
+                    <div className="w-16 h-16 rounded-2xl bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center mx-auto mb-6 shadow-xl shadow-indigo-500/5">
+                        <svg className="w-8 h-8 text-indigo-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                        </svg>
+                    </div>
+                    <h2 className="text-2xl font-bold text-white mb-3 tracking-tight">Desktop Workspace Required</h2>
+                    <p className="text-[#8a8a9a] text-sm leading-relaxed mb-8">
+                        Smartbuilder is a powerful development environment optimized for building software.
+                        To use the dashboard, monitor systems, and build your applications, please log in from a <strong>laptop or desktop computer</strong>.
+                    </p>
+                    <a 
+                        href="/" 
+                        className="inline-flex items-center justify-center px-6 py-3 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl text-sm font-semibold text-white transition-all"
+                    >
+                        Return to Homepage
+                    </a>
+                </div>
             </div>
         );
     }
