@@ -35,14 +35,7 @@ export interface Idea {
     is_discovery_only?: boolean;
 
     // Scoring signals from IdeaCard context
-    signals?: {
-        demand: number;
-        competition: string;
-        monetization: string;
-        difficulty: string;
-        trend?: string;
-        market_size?: string;
-    };
+    signals?: any;
 
     // Real Market Signals Engine
     market_signals?: {

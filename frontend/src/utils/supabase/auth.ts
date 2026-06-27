@@ -15,10 +15,10 @@ export async function getAuthHeaders(): Promise<HeadersInit> {
     // Prevent multiple simultaneous session checks/refreshes
     // and reuse the same promise if it was fetched very recently
     if (!sessionPromise || (now - lastFetchTime > CACHE_DURATION)) {
-        sessionPromise = supabase.auth.getSession().then(result => {
+        sessionPromise = supabase.auth.getSession().then((result: any) => {
             lastFetchTime = Date.now();
             return result;
-        }).catch(err => {
+        }).catch((err: any) => {
             sessionPromise = null;
             throw err;
         });

@@ -69,6 +69,9 @@ ${JSON.stringify(signals, null, 2)}
   }
 
   let content = response.content;
+  if (!content) {
+    throw new Error("AI returned empty content for market intelligence analysis.");
+  }
   try {
       return JSON.parse(content.trim());
   } catch(e) {

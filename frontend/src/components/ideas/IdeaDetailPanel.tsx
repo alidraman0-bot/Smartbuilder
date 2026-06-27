@@ -232,7 +232,7 @@ export default function IdeaDetailPanel({ idea, isOpen, onClose, onPromote, isPr
                             
                             {(idea.signals && idea.signals.length > 0) ? (
                                 <div className="space-y-4">
-                                    {idea.signals.slice(0, 5).map((signal, i) => (
+                                    {idea.signals.slice(0, 5).map((signal: any, i: number) => (
                                         <a 
                                             key={`sig-${i}`} 
                                             href={signal.url} 

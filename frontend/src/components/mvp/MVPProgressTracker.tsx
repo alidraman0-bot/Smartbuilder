@@ -5,7 +5,18 @@ const steps = [
   "Analyze", "Design", "Generate & Scaffold", "Optimize", "Deploy"
 ];
 
-export default function MVPProgressTracker({ stateData, status }) {
+interface MVPProgressTrackerProps {
+    stateData: {
+        state: string;
+        last_error?: {
+            message?: string;
+        } | null;
+        preview_url?: string | null;
+    };
+    status: string;
+}
+
+export default function MVPProgressTracker({ stateData, status }: MVPProgressTrackerProps) {
     // stateData.state -> 'S1', 'S5', 'FAILED' etc.
     // For visual simplicity, we will mock mapping S1..S5 to these steps
     
