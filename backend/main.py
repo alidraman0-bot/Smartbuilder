@@ -132,7 +132,7 @@ import httpx
 # ---------------------------------------------------------------------------
 # AI Proxy Layer (Redirect to Node.js Deployment Platform)
 # ---------------------------------------------------------------------------
-DEPLOY_PLATFORM_URL = "http://localhost:8002"
+DEPLOY_PLATFORM_URL = os.getenv("DEPLOY_PLATFORM_URL", "http://localhost:8002")
 
 @app.api_route("/api/v1/github/{path:path}", methods=["GET", "POST", "PUT", "DELETE"])
 @app.api_route("/api/v1/projects/{path:path}", methods=["GET", "POST", "PUT", "DELETE"])

@@ -10,12 +10,17 @@ const nextConfig: NextConfig = {
   },
   */
   async rewrites() {
+    // Detect Vercel environment (both production and vercel dev)
+    const isVercel = process.env.VERCEL === "1" || process.env.NOW_BUILDER === "1";
+    
     return [
       {
         source: '/api/:path*',
         destination: process.env.BACKEND_URL
           ? `${process.env.BACKEND_URL}/api/:path*`
-          : 'http://127.0.0.1:8000/api/:path*',
+          : isVercel
+            ? '/_/backend/api/:path*'
+            : 'http://127.0.0.1:8000/api/:path*',
       },
     ];
   },

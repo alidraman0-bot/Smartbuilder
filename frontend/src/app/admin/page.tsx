@@ -28,11 +28,11 @@ export default function AdminPage() {
         try {
             const headers = await getAuthHeaders();
             const [s, r, u, p, sys] = await Promise.all([
-                apiFetch(`${API}/api/v1/admin/stats`, { headers }),
-                apiFetch(`${API}/api/v1/admin/revenue`, { headers }),
-                apiFetch(`${API}/api/v1/admin/users?limit=15`, { headers }),
-                apiFetch(`${API}/api/v1/admin/projects?limit=10`, { headers }),
-                apiFetch(`${API}/api/v1/admin/system`, { headers }),
+                apiFetch(`/api/v1/admin/stats`, { headers }),
+                apiFetch(`/api/v1/admin/revenue`, { headers }),
+                apiFetch(`/api/v1/admin/users?limit=15`, { headers }),
+                apiFetch(`/api/v1/admin/projects?limit=10`, { headers }),
+                apiFetch(`/api/v1/admin/system`, { headers }),
             ]);
             setStats(s);
             setRevenue(r);

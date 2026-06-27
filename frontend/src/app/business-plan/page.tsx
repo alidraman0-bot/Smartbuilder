@@ -221,7 +221,7 @@ export default function BusinessPlanPage() {
     }, 4000);
 
     try {
-      const res = await fetch(`${API_URL}/api/business-plan`, {
+      const res = await fetch(`/api/business-plan`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(formData),

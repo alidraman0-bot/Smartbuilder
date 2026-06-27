@@ -238,7 +238,7 @@ export default function PRDBuilderPage() {
     }, 3500);
 
     try {
-      const res = await fetch(`${API_URL}/api/prd`, {
+      const res = await fetch(`/api/prd`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(formData),

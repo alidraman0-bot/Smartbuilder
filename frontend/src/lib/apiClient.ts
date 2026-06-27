@@ -1,4 +1,13 @@
-const API_BASE = process.env.NEXT_PUBLIC_BACKEND_URL || "http://127.0.0.1:8000"
+const getVercelBackendUrl = () => {
+  if (!process.env.VERCEL_URL) return "http://127.0.0.1:8000";
+  const protocol = process.env.VERCEL_URL.includes("localhost") ? "http" : "https";
+  return `${protocol}://${process.env.VERCEL_URL}/_/backend`;
+};
+
+const API_BASE = typeof window !== "undefined"
+  ? ""
+  : (process.env.NEXT_PUBLIC_BACKEND_URL || 
+     (process.env.VERCEL === "1" ? getVercelBackendUrl() : "http://127.0.0.1:8000"));
 
 export async function apiFetch<T>(path: string, options: RequestInit = {}): Promise<T> {
     const url = `${API_BASE}${path.startsWith('/') ? '' : '/'}${path}`
