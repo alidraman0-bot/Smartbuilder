@@ -1,0 +1,8 @@
+﻿Testing GET /api/market-signals...
+Status: 200
+Retrieved 20 signals
+Top signal: Share your startup. I'll find you 5 potential customers for free.
+
+Testing POST /api/v1/generate-from-signal...
+Status: 500
+Error: {"detail":"All AI providers failed. Last exception: Error code: 401 - {'type': 'error', 'error': {'type': 'authentication_error', 'message': 'invalid x-api-key'}, 'request_id': 'req_011CYm3tTboWvYMFrpvtixrC'}"}
