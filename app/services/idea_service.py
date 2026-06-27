@@ -7,6 +7,7 @@ from app.core.config import settings
 from app.services.signal_service import signal_service
 from app.core.ai_client import get_ai_client
 from app.services.memory_service import memory_service
+from app.models.memory import MemoryEventBase
 from app.services.seed_generator_service import seed_generator_service
 from app.services.interpreter_service import interpreter_service
 import asyncio
@@ -19,6 +20,169 @@ class IdeaService:
         self.history: Dict[str, List[Dict[str, Any]]] = {}
         self.instance_id = str(uuid.uuid4())
         logger.info(f"IdeaService initialized with instance_id: {self.instance_id}")
+
+    async def generate_discovery_batch(
+        self,
+        project_id: str,
+        user_id: Optional[str] = None,
+        count: int = 5
+    ) -> List[Dict[str, Any]]:
+        """
+        FAST DISCOVERY: combinatorial, seed-based generation for high-speed browsing.
+        This provides unique ideas by mixing dimensionsly.
+        """
+        try:
+            # 1. Reserve seeds atomically
+            reserved_seeds = await seed_generator_service.generate_seed_batch(
+                project_id=project_id,
+                user_id=user_id,
+                count=count
+            )
+            
+            # 2. Get dimension details
+            seed_constraints = []
+            for seed in reserved_seeds:
+                details = await seed_generator_service.get_dimension_details(seed)
+                seed_constraints.append(details)
+            
+            # 3. Fast AI Prompt (focused on variety and speed)
+            system_prompt = """
+            You are a lightning-fast startup idea generator.
+            Given a set of seed constraints, generate a unique startup idea for each.
+            Focus on creative, market-backed, and combinatorial ideas.
+            
+            Return exactly {count} ideas in this JSON format:
+            {{
+              "ideas": [
+                {{
+                  "title": "Short catching name",
+                  "thesis": "1-2 sentence core value prop",
+                  "industry": "Industry used",
+                  "customer_segment": "User segment used",
+                  "problem": "Pain point addressed",
+                  "technology": "Enabling tech",
+                  "region": "Geography",
+                  "category": "Broad category (e.g. Fintech, Health, SaaS)",
+                  "market_keywords": ["keyword1", "keyword2", "keyword3", "keyword4", "keyword5"]
+                }}
+              ]
+            }}
+            """
+            
+            constraints_text = json.dumps(seed_constraints, indent=2)
+            user_prompt = f"Generate {count} unique ideas based on these combinatorial constraints:\n{constraints_text}"
+            
+            response = await self.client.chat_completion(
+                messages=[{"role": "user", "content": user_prompt}],
+                system_prompt=system_prompt.format(count=count),
+                response_format={"type": "json_object"},
+                temperature=1.0, # High randomness for discovery
+                model="openai/gpt-4o-mini"
+            )
+            
+            result_data = json.loads(response['content'])
+            candidates = result_data.get('ideas', [])
+            
+            # 4. Deduplication & Persistence
+            final_ideas = []
+            from app.core.supabase import get_service_client
+            svc_client = get_service_client()
+            
+            for i, idea in enumerate(candidates):
+                # Map back to seed id
+                seed_id = reserved_seeds[i]['id'] if i < len(reserved_seeds) else None
+                
+                # Check for exact title duplicate globally
+                dupe_check = svc_client.table("ideas_v2").select("id").eq("title", idea['title']).execute()
+                if dupe_check.data:
+                    logger.info(f"Global duplicate found for '{idea['title']}', skipping.")
+                    continue
+                
+                # Generate embedding for future similarity checks
+                try:
+                    embedding_text = f"{idea['title']}: {idea.get('thesis', idea.get('summary', ''))}"
+                    embedding = await self.client.generate_embedding(embedding_text)
+                    
+                    # SEMANTIC DEDUPLICATION
+                    if embedding:
+                        rpc_params = {
+                            "query_embedding": embedding,
+                            "match_threshold": 0.85,
+                            "match_count": 1
+                        }
+                        try:
+                            similar_ideas = svc_client.rpc("match_ideas", rpc_params).execute()
+                            if similar_ideas.data:
+                                match = similar_ideas.data[0]
+                                logger.info(f"Semantic duplicate found: '{idea['title']}' is {match['similarity']:.2f} similar to '{match['title']}'. Skipping.")
+                                continue
+                        except Exception as rpc_err:
+                            logger.warning(f"Similarity RPC failed (pgvector might not be enabled yet): {rpc_err}")
+                except Exception as e:
+                    logger.warning(f"Failed to generate embedding or check similarity: {e}")
+                    embedding = None
+                
+                # Prepare record
+                # Note: We exclude industry, customer_segment, problem, technology, region 
+                # for now as they are missing from the Supabase schema cache and cause 400 errors.
+                record = {
+                    "project_id": project_id,
+                    "user_id": user_id,
+                    "seed_id": seed_id,
+                    "title": idea['title'],
+                    "thesis": idea.get('thesis', idea.get('summary', '')),
+                    "embedding": embedding,
+                    "status": "draft",
+                    "source": "combinatorial_discovery"
+                }
+                
+                # Add to final ideas BEFORE attempting to save (Optimistic return)
+                # We add 'id' so the UI has a unique key, even if not saved to DB yet
+                # We include market_keywords so they are returned to the UI
+                idea_id_for_ui = str(uuid.uuid4())
+                ui_idea = {**idea, "id": idea.get('id', idea_id_for_ui), "seed_id": seed_id, "project_id": project_id}
+                final_ideas.append(ui_idea)
+
+                try:
+                    res = svc_client.table("ideas_v2").insert(record).execute()
+                    final_id = None
+                    if res.data:
+                        saved_idea = res.data[0]
+                        final_id = saved_idea['id']
+                        ui_idea['id'] = final_id
+                        
+                        # Track seen for user
+                        if user_id:
+                            svc_client.table("user_seen_ideas").insert({
+                                "user_id": user_id,
+                                "idea_id": final_id
+                            }).execute()
+                    
+                    # PERSIST KEYWORDS (Critical for deep analysis speed)
+                    keywords = idea.get('market_keywords', [])
+                    if keywords and (final_id or idea_id_for_ui):
+                        try:
+                            # Use market_keywords table
+                            svc_client.table("market_keywords").upsert({
+                                "idea_id": final_id or idea_id_for_ui,
+                                "keywords": keywords
+                            }).execute()
+                        except Exception as kw_e:
+                            logger.warning(f"Failed to persist discovery keywords: {kw_e}")
+                            
+                except Exception as e:
+                    logger.error(f"Failed to save discovery idea: {e}")
+
+            # Mark seeds as used
+            used_ids = [idea.get('seed_id') for idea in final_ideas if idea.get('seed_id')]
+            if used_ids:
+                await seed_generator_service.mark_seeds_as_used(used_ids)
+                
+            return final_ideas
+
+        except Exception as e:
+            logger.error(f"Discovery batch generation failed: {e}")
+            raise e
 
     async def generate_ideas(self, mode: str = "discover", user_input: Optional[str] = None, user_id: Optional[str] = None) -> List[Dict[str, Any]]:
         """
@@ -391,7 +555,7 @@ class IdeaService:
         
         # Add IDs
         for i, idea in enumerate(selected_ideas):
-            idea["idea_id"] = f"mock-{i}-{uuid.uuid4()}"
+            idea["idea_id"] = str(uuid.uuid4())
 
         return selected_ideas
 
@@ -576,7 +740,8 @@ Market Signals:
                                     {"role": "user", "content": user_prompt}
                                 ],
                                 response_format={"type": "json_object"},
-                                temperature=0.9
+                                temperature=0.9,
+                                model="openai/gpt-4o-mini"
                             ),
                             timeout=90.0
                         )
@@ -744,6 +909,24 @@ Market Signals:
                                 logger.warning(f"ideas_v2 insert failed, trying legacy table: {db_err}")
                                 saved = await memory_service.save_idea(project_id, idea)
                                 persisted_ideas.append(saved)
+                                continue
+                            
+                            # Success path for ideas_v2: We MUST log the event manually here 
+                            # because ideas_v2 doesn't have an automated trigger yet.
+                            try:
+                                await memory_service.log_event(MemoryEventBase(
+                                    project_id=uuid.UUID(project_id),
+                                    type="idea_created",
+                                    title=f"Idea Generated: {idea['title']}",
+                                    description=idea.get('thesis', idea.get('problem', '')),
+                                    artifact_ref_type="ideas_v2",
+                                    artifact_ref_id=uuid.UUID(idea["id"]),
+                                    actor="smartbuilder_ai"
+                                ))
+                            except Exception as log_err:
+                                logger.warning(f"Failed to log idea_v2 creation to memory: {log_err}")
+                            
+                            persisted_ideas.append(idea)
                             
                         except Exception as save_err:
                             logger.warning(f"Failed to persist idea: {save_err}")
@@ -849,7 +1032,8 @@ Return a JSON object with key "scores" containing an array of objects:
 }
 """
         try:
-            response = await self.client.chat_completion(
+            response = await self.client.routed_completion(
+                task="validation_scoring",
                 messages=[
                     {"role": "system", "content": scoring_prompt},
                     {"role": "user", "content": f"Score these ideas: {json.dumps(ideas)}"}

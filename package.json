@@ -1,5 +1,15 @@
 {
+  "scripts": {
+    "dev": "concurrently \"npm run backend\" \"npm run deploy\" \"set PORT=3001 & npm run frontend\"",
+    "dev:all": "concurrently \"npm run backend\" \"npm run deploy\" \"npm run frontend\"",
+    "backend": "uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload",
+    "deploy": "cd deploy & set PORT=8002 & npm start",
+    "frontend": "cd frontend && npm run dev"
+  },
   "devDependencies": {
-    "@testsprite/testsprite-mcp": "^0.0.19"
+    "@testsprite/testsprite-mcp": "^0.0.19",
+        "cross-env": "^7.0.3",
+    "concurrently": "^9.2.1"
+
   }
 }

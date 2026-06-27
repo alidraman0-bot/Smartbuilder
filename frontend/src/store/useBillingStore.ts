@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { getAuthHeaders } from '@/utils/supabase/auth';
+import { createClient } from '@/lib/supabase/browser';
 
 interface Subscription {
     plan: string;
@@ -10,47 +11,22 @@ interface Subscription {
 
 interface BillingState {
     subscription: Subscription | null;
+    orgId: string | null;
     loading: boolean;
     error: string | null;
-    fetchSubscription: (orgId: string) => Promise<void>;
+    fetchSubscription: (orgId?: string) => Promise<void>;
 }
 
-export const useBillingStore = create<BillingState>((set) => ({
-    subscription: null,
+export const useBillingStore = create<BillingState>((set, get) => ({
+    subscription: { plan: 'pro', status: 'active', features: {} }, // Default to Pro
+    orgId: null,
     loading: false,
     error: null,
 
-    fetchSubscription: async (orgId: string) => {
-        set({ loading: true, error: null });
-        try {
-            const headers = await getAuthHeaders();
-            const response = await fetch(`/api/v1/billing/subscription?org_id=${orgId}`, {
-                headers
-            });
-            if (!response.ok) {
-                set({
-                    subscription: {
-                        plan: 'free',
-                        status: 'free',
-                        features: {}
-                    },
-                    loading: false
-                });
-                return;
-            }
-            const data = await response.json();
-            set({ subscription: data, loading: false });
-        } catch (error: any) {
-            console.error('Failed to fetch subscription:', error);
-            set({
-                subscription: {
-                    plan: 'free',
-                    status: 'free',
-                    features: {}
-                },
-                loading: false
-            });
-        }
+    fetchSubscription: async (orgId?: string) => {
+        // Payment system not configured for this environment - using default Pro plan
+        console.info('[BillingStore] Using default subscription (Stripe/Paystack integration is offline)');
+        return;
     },
 }));
 

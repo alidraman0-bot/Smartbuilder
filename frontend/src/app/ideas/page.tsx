@@ -21,194 +21,144 @@ import LiveMarketSignals, { MarketSignal } from '@/components/ideas/LiveMarketSi
 import ThinkingPanel from '@/components/opportunities/ThinkingPanel';
 import OpportunityCard, { OpportunityIdea } from '@/components/opportunities/OpportunityCard';
 import { useBillingStore } from '@/store/useBillingStore';
-import { createClient } from '@/utils/supabase/client';
+import { createClient } from '@/lib/supabase/browser';
 import { type FeatureKey } from '@/utils/feature-gating';
+import { type Idea } from '@/types/idea';
+import { useIdeas } from '@/hooks/useIdeas';
+import { apiFetch } from '@/lib/apiClient';
+import { getAuthHeaders } from '@/utils/supabase/auth';
 
-interface Idea {
-  idea_id: string;
-  title: string;
-  thesis: string;
-  market_size: string;
-  problem_bullets: string[];
-  target_customer: {
-    primary_user: string;
-    company_size: string;
-    industry_or_role: string;
-  };
-  monetization: {
-    pricing_structure: string;
-    who_pays: string;
-    value_prop: string;
-  };
-  why_now_bullets: string[];
-  alternatives_structured: {
-    today: string[];
-    gaps: string[];
-  };
-  mvp_scope_bullets: string[];
-  confidence_reasoning_bullets: string[];
-  risks_structured: {
-    adoption: string;
-    technical: string;
-    market: string;
-  };
-  confidence_score: number;
-  market_score: number;
-  execution_complexity: number;
-}
 
 export default function IdeaGeneratorPage() {
   const [userIdeaInput, setUserIdeaInput] = useState('');
-  const [isGenerating, setIsGenerating] = useState(false);
-  const [generatedIdeas, setGeneratedIdeas] = useState<Idea[]>([]);
-  const [selectedIdea, setSelectedIdea] = useState<Idea | null>(null);
+  const [displayIdeas, setDisplayIdeas] = useState<Idea[]>([]);
   const [isDetailOpen, setIsDetailOpen] = useState(false);
   const [generationType, setGenerationType] = useState<'user' | 'auto' | null>(null);
-  const [error, setError] = useState<string | null>(null);
   const [showPaywall, setShowPaywall] = useState(false);
   const [paywallFeature, setPaywallFeature] = useState<FeatureKey>('idea_generation');
 
   const [startupId, setStartupId] = useState<string | null>(null);
-  const [currentStage, setCurrentStage] = useState<PipelineStage>('idea');
+  const [currentStage, setCurrentStage] = useState<PipelineStage>('IDEA');
 
+  const [selectedIdea, setSelectedIdea] = useState<Idea | null>(null);
   const [isThinking, setIsThinking] = useState(false);
-  const [showOpportunities, setShowOpportunities] = useState(false);
-  const [opportunityIdeas, setOpportunityIdeas] = useState<OpportunityIdea[]>([]);
-  const [isEngineGenerating, setIsEngineGenerating] = useState(false);
+  const [isEngineGenerating, setIsEngineGenerating] = useState<boolean>(false);
+  const [currentProjectId, setCurrentProjectId] = useState<string | null>(null);
 
   const router = useRouter();
   const { subscription, fetchSubscription } = useBillingStore();
+  const { generateIdeas, discoverIdeas, generateFromSignal, fetchIdeaDetails, isLoading, error, setError } = useIdeas();
 
   const supabase = createClient();
 
   React.useEffect(() => {
-    const getOrg = async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (user) {
-        // 1. Try finding org where user is a member (org_members)
-        let { data: orgMember } = await supabase
-          .from('org_members')
+    const initPage = async () => {
+      // Consolidate auth into a single call — session already contains the user
+      const { data: { session } } = await supabase.auth.getSession();
+      const user = session?.user;
+      if (!user) return;
+      const accessToken = session?.access_token;
+
+      // 1. Try finding org where user is a member (org_members)
+      let { data: orgMember } = await supabase
+        .from('org_members')
+        .select('org_id')
+        .eq('user_id', user.id)
+        .maybeSingle();
+
+      let org_id = orgMember?.org_id;
+
+      // 2. Try legacy team_members if not found
+      if (!org_id) {
+        const { data: teamMember } = await supabase
+          .from('team_members')
           .select('org_id')
           .eq('user_id', user.id)
           .maybeSingle();
+        org_id = teamMember?.org_id;
+      }
 
-        let org_id = orgMember?.org_id;
+      // 3. Check if user is an owner of any organization
+      if (!org_id) {
+        const { data: ownedOrg } = await supabase
+          .from('organizations')
+          .select('id')
+          .eq('owner_id', user.id)
+          .limit(1)
+          .maybeSingle();
+        org_id = ownedOrg?.id;
+      }
 
-        // 2. Try legacy team_members if not found
-        if (!org_id) {
-          const { data: teamMember } = await supabase
-            .from('team_members')
-            .select('org_id')
-            .eq('user_id', user.id)
-            .maybeSingle();
-          org_id = teamMember?.org_id;
+      // 4. Fallback: Auto-provision a default org if needed
+      if (!org_id && accessToken) {
+        try {
+          const data = await apiFetch<any>('/api/v1/billing/provision', {
+            headers: { 'Authorization': `Bearer ${accessToken}` }
+          });
+          org_id = data.org_id;
+          console.info('Auto-provisioned default organization');
+        } catch (err: any) {
+          console.error('Failed to auto-provision organization:', err.message);
         }
+      }
 
-        // 3. Check if user is an owner of any organization
-        if (!org_id) {
-          const { data: ownedOrg } = await supabase
-            .from('organizations')
-            .select('id')
-            .eq('owner_id', user.id)
-            .limit(1)
-            .maybeSingle();
-          org_id = ownedOrg?.id;
-        }
+      if (org_id) {
+        fetchSubscription(org_id);
 
-        if (!org_id) {
-          // 4. Frictionless Fallback: Auto-provision a default org
+        // Fetch or create startup tracking
+        if (accessToken) {
           try {
-            const { data: { session } } = await supabase.auth.getSession();
-            const res = await fetch('/api/v1/billing/provision', {
-              headers: {
-                'Authorization': `Bearer ${session?.access_token}`
-              }
+            const projects = await apiFetch<any[]>('/api/v1/projects', {
+              headers: { 'Authorization': `Bearer ${accessToken}` }
             });
-            if (res.ok) {
-              const data = await res.json();
-              org_id = data.org_id;
-              console.info('Auto-provisioned default organization');
+
+            if (projects && projects.length > 0) {
+              setCurrentProjectId(projects[0].id || projects[0].project_id);
+            } else {
+              console.info('No projects found, creating default...');
+              const newProj = await apiFetch<any>('/api/v1/project/create', {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  'Authorization': `Bearer ${accessToken}`
+                },
+                body: JSON.stringify({
+                  startup_name: "Default Genesis",
+                  industry: "Software"
+                })
+              });
+              setCurrentProjectId(newProj.id || newProj.project_id);
             }
           } catch (err) {
-            console.error('Failed to auto-provision organization:', err);
+            console.error('Failed to init project:', err);
           }
-        }
-
-        if (org_id) {
-          const { data: { session } } = await supabase.auth.getSession();
-          fetchSubscription(org_id);
-
-          // Fetch or create startup tracking
-          try {
-            const res = await fetch('/api/v1/startup-progress', {
-              headers: { 'Authorization': `Bearer ${session?.access_token}` }
-            });
-            // For simplify, we'll try to find any startup or create one
-            const sRes = await fetch('/api/v1/startup', {
-              headers: { 'Authorization': `Bearer ${session?.access_token}` }
-            });
-            // In a real app, we'd have a project selector. 
-            // Here we'll just use a mock/first startup approach for the visual demo.
-          } catch (e) { }
         }
       }
     };
-    getOrg();
+    initPage();
   }, [fetchSubscription]);
 
   // --- Actions ---
 
   const handleGenerateUser = async () => {
     if (!userIdeaInput.trim()) return;
-    setIsGenerating(true);
     setError(null);
     setGenerationType('user');
-    setGeneratedIdeas([]);
+    setDisplayIdeas([]);
     setSelectedIdea(null);
     setIsDetailOpen(false);
 
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      const response = await fetch('/api/v1/ideas/generate', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${session?.access_token}`
-        },
-        body: JSON.stringify({
-          mode: 'validate_idea',
-          user_input: userIdeaInput
-        })
-      });
-
-      if (!response.ok) {
-        if (response.status === 429 || response.status === 402) {
-          setPaywallFeature('idea_generation');
-          setShowPaywall(true);
-          setIsGenerating(false);
-          return;
-        }
-
-        const errorText = await response.text().catch(() => 'No body');
-        console.error('Generation API failed:', response.status, errorText);
-        let errorDetail = 'Failed to generate ideas';
-        try {
-          const errorData = JSON.parse(errorText);
-          errorDetail = errorData.detail?.error || errorData.detail || errorDetail;
-        } catch (e) { }
-        throw new Error(errorDetail);
-      }
-
-      const data = await response.json();
-      const ideas = Array.isArray(data) ? data : (data.ideas || []);
-      setGeneratedIdeas(ideas);
-      // Auto-advance pipeline to research
-      setCurrentStage('research');
+      const ideas = await generateIdeas('validate_idea', userIdeaInput, currentProjectId);
+      setDisplayIdeas(ideas);
+      setCurrentStage('RESEARCH');
     } catch (err: any) {
       console.error('Generation error:', err);
-      setError(err.message);
-    } finally {
-      setIsGenerating(false);
+      // specific error codes could be checked here
+      if (err.message?.includes('429') || err.message?.includes('402')) {
+          setPaywallFeature('idea_generation');
+          setShowPaywall(true);
+      }
     }
   };
 
@@ -217,170 +167,191 @@ export default function IdeaGeneratorPage() {
     setIsThinking(true);
     setError(null);
     setGenerationType('auto');
-    setGeneratedIdeas([]);
-    setOpportunityIdeas([]);
+    setDisplayIdeas([]);
     setSelectedIdea(null);
     setIsDetailOpen(false);
 
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      const response = await fetch('/api/v1/opportunity-engine', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${session?.access_token}`
-        }
-      });
-
-      if (!response.ok) {
-        if (response.status === 429 || response.status === 402) {
-          setPaywallFeature('idea_generation');
-          setShowPaywall(true);
-          setIsEngineGenerating(false);
-          setIsThinking(false);
-          return;
-        }
-
-        const errorText = await response.text().catch(() => 'No body');
-        console.error('Opportunity Engine failed:', response.status, errorText);
-        throw new Error('Failed to discover opportunities');
-      }
-
-      const data = await response.json();
-      setOpportunityIdeas(data.ideas || []);
-      // Auto-advance pipeline to research
-      setCurrentStage('research');
-      // We don't set setIsThinking(false) here, we let ThinkingPanel finish
+      const ideas = await discoverIdeas(currentProjectId);
+      setDisplayIdeas(ideas);
+      setCurrentStage('RESEARCH');
     } catch (err: any) {
       console.error('Opportunity error:', err);
-      setError(err.message);
-      setIsThinking(false);
+      setError(err.message || "AI Discovery is warming up. Please try again in 30 seconds.");
     } finally {
       setIsEngineGenerating(false);
+      setIsThinking(false);
     }
   };
 
   const onThinkingComplete = () => {
     setIsThinking(false);
-    setShowOpportunities(true);
   };
 
   const handleGenerateFromSignal = async (signal: MarketSignal) => {
-    setIsGenerating(true);
     setError(null);
     setGenerationType('auto');
-    setGeneratedIdeas([]);
+    setDisplayIdeas([]);
     setSelectedIdea(null);
     setIsDetailOpen(false);
 
     try {
-      const response = await fetch('/api/generate-from-signal', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          source: signal.source,
-          title: signal.title,
-          description: signal.description || ''
-        })
-      });
+      const data = await generateFromSignal(signal.source, signal.title, signal.description || '');
+      
+      // Handle both single object and array responses
+      const ideasArray: any[] = Array.isArray(data) ? data : (data.ideas ? data.ideas : (data.title ? [data] : []));
 
-      if (!response.ok) {
-        if (response.status === 429 || response.status === 402) {
+      const mappedIdeas: Idea[] = ideasArray.map((item: any) => ({
+        title: item.title,
+        thesis: item.thesis || item.description || item.problem || item.solution || '',
+        description: item.description || item.thesis || item.problem || '',
+        market_size: item.market_size || item.target_market || 'Unknown',
+        confidence_score: item.confidence_score ?? item.validation_score ?? 80,
+        opportunity_score: item.opportunity_score ?? item.confidence_score ?? item.validation_score ?? 80,
+        market_score: item.market_score ?? 75,
+        execution_complexity: item.execution_complexity ?? 50,
+        signals: item.signals,
+        target_customer: item.target_customer || { 
+          primary_user: item.target_audience || 'Target audience', 
+          company_size: 'SMB', 
+          industry_or_role: item.target_audience || 'SaaS' 
+        },
+        monetization: item.monetization ? (typeof item.monetization === 'string' ? { pricing_structure: item.monetization, who_pays: 'Users', value_prop: 'Value' } : item.monetization) : { pricing_structure: 'SaaS / Recurring', who_pays: 'Teams', value_prop: 'Efficiency gains' },
+        problem_bullets: item.problem_bullets || [item.problem || signal.title],
+        why_now_bullets: item.why_now_bullets || [item.why_now || `${signal.source} signal is trending now`],
+        alternatives_structured: item.alternatives_structured || { today: ['Manual workarounds'], gaps: ['Not scalable'] },
+        mvp_scope_bullets: item.mvp_scope_bullets || (item.core_features || ['Core product', 'Dashboard', 'Integrations']),
+        confidence_reasoning_bullets: item.confidence_reasoning_bullets || ['Live signal detected'],
+        risks_structured: item.risks_structured || { adoption: 'Moderate', technical: 'Standard', market: 'TBD' },
+        id: item.id || item.idea_id || crypto.randomUUID(),
+        idea_id: item.idea_id || item.id || crypto.randomUUID(),
+      }));
+      setDisplayIdeas(mappedIdeas);
+      setCurrentStage('RESEARCH');
+    } catch (err: any) {
+      console.error('Signal generation error:', err);
+      if (err.message?.includes('429') || err.message?.includes('402')) {
           setPaywallFeature('idea_generation');
           setShowPaywall(true);
-          setIsGenerating(false);
-          return;
-        }
-
-        const errorText = await response.text().catch(() => 'No body');
-        console.error('Generation API failed:', response.status, errorText);
-        let errorDetail = 'Failed to generate ideas';
-        try {
-          const errorData = JSON.parse(errorText);
-          errorDetail = errorData.detail?.error || errorData.detail || errorDetail;
-        } catch (e) { }
-        throw new Error(errorDetail);
       }
-
-      const data = await response.json();
-
-      const newIdea: Idea = {
-        idea_id: `signal-${Date.now()}`,
-        title: data.title,
-        thesis: data.description,
-        market_size: 'Unknown (Signal Based)',
-        problem_bullets: [data.why_now],
-        target_customer: {
-          primary_user: data.target_audience,
-          company_size: 'Any',
-          industry_or_role: 'N/A'
-        },
-        monetization: {
-          pricing_structure: data.monetization,
-          who_pays: 'Target Audience',
-          value_prop: 'Solving an immediate market problem'
-        },
-        why_now_bullets: [data.why_now],
-        alternatives_structured: {
-          today: ['Status quo'],
-          gaps: ['Inefficient']
-        },
-        mvp_scope_bullets: data.core_features || [],
-        confidence_reasoning_bullets: ['Directly addresses a live market signal or complaint'],
-        risks_structured: {
-          adoption: 'Requires behavior change',
-          technical: 'Moderate',
-          market: 'Testing required'
-        },
-        confidence_score: 85,
-        market_score: 80,
-        execution_complexity: 50
-      };
-
-      setGeneratedIdeas([newIdea]);
-      // Auto-advance pipeline to research
-      setCurrentStage('research');
-    } catch (err: any) {
-      console.error('Generation error:', err);
-      setError(err.message);
-    } finally {
-      setIsGenerating(false);
     }
   };
 
-  const handleSelectIdea = (idea: Idea) => {
+  const handleSelectIdea = async (idea: Idea) => {
     setSelectedIdea(idea);
     setIsDetailOpen(true);
+
+    try {
+      const result = await fetchIdeaDetails(idea);
+      
+      // Helper to extract string from potential object response (AI sometimes nests things)
+      const formatItem = (item: any): string => {
+        if (typeof item === 'string') return item;
+        if (typeof item === 'object' && item !== null) {
+          return item.label || item.keyword || item.title || item.name || JSON.stringify(item);
+        }
+        return String(item);
+      };
+
+      const enriched: Idea = {
+        ...idea,
+        title: result.title || idea.title,
+        confidence_score: result.confidence_score || idea.confidence_score,
+        market_size: result.market_size?.estimate || idea.market_size,
+        execution_complexity: (result.complexity?.score !== undefined) ? result.complexity.score : idea.execution_complexity,
+        problem_bullets: result.problem?.pain_points?.map(formatItem) || idea.problem_bullets || [],
+        target_customer: {
+          primary_user: result.target_customers?.primary || idea.target_customer?.primary_user || 'Target Market',
+          company_size: 'SMB to Enterprise',
+          industry_or_role: result.target_customers?.geography || idea.target_customer?.industry_or_role || 'Global'
+        },
+        monetization: {
+          pricing_structure: result.monetization?.model || idea.monetization?.pricing_structure || 'Subscription',
+          who_pays: result.target_customers?.primary || 'Target Customers',
+          value_prop: result.problem?.summary || idea.monetization?.value_prop || 'Efficiency gains'
+        },
+        why_now_bullets: result.why_now?.trends?.map(formatItem) || idea.why_now_bullets || [],
+        alternatives_structured: {
+          today: result.market_gaps_today?.map(formatItem) || idea.alternatives_structured?.today || [],
+          gaps: idea.alternatives_structured?.gaps || ["High competition intensity", "Market fragmentation"]
+        },
+        mvp_scope_bullets: result.mvp_scope?.core_features?.map(formatItem) || idea.mvp_scope_bullets || [],
+        confidence_reasoning_bullets: [
+          ...(result.why_smartbuilder_confident?.signals_used?.map(formatItem) || []),
+          ...(result.why_smartbuilder_confident?.data_points?.map(formatItem) || [])
+        ].slice(0, 5),
+        risks_structured: {
+          adoption: result.risks_to_validate?.[0]?.risk || 'User behavior shift',
+          technical: result.risks_to_validate?.[1]?.risk || 'Standard scalability',
+          market: result.risks_to_validate?.[2]?.risk || 'Competition speed'
+        },
+        is_discovery_only: false,
+        thesis: result.why_now?.summary || idea.thesis || `A strategic opportunity in ${result.title}`,
+      };
+      setSelectedIdea(enriched);
+    } catch (err) {
+      console.error('Failed to generate investment brief:', err);
+    }
   };
 
   const handlePromote = async (ideaId: string) => {
-    try {
-      const response = await fetch('/api/v1/ideas/promote', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ idea_id: ideaId })
-      });
-      if (response.ok) {
-        router.push('/research');
-      } else {
-        const errorData = await response.json().catch(() => ({ detail: 'Unknown error' }));
-        alert(`Failed to promote idea: ${errorData.detail}`);
-      }
-    } catch (e) {
-      console.error(e);
-      alert("Failed to promote idea.");
-    }
+    // Find the idea in displayIdeas or use the selected one
+    const ideaToPromote = displayIdeas.find(i => (i.id === ideaId || i.idea_id === ideaId)) || selectedIdea;
+    const title = ideaToPromote?.title || '';
+    
+    // Navigate to research page with auto-run instruction, title, and deep mode
+    router.push(`/research?ideaId=${ideaId}&idea=${encodeURIComponent(title)}&autoRun=true&mode=deep`);
   };
+
+  const handleSelectOpportunity = (opp: OpportunityIdea) => {
+    // Map OpportunityIdea to Idea format for the Detail Panel
+    const mappedIdea: Idea = {
+      title: opp.title,
+      thesis: opp.market_hint || opp.problem?.split('. ')[0],
+      market_size: opp.market_size || opp.score_data?.market_evidence?.funding_activity || '$1B+',
+      problem_bullets: [opp.problem],
+      target_customer: {
+        primary_user: opp.target_customer,
+        company_size: 'SMB to Mid-market',
+        industry_or_role: 'Niche specific'
+      },
+      monetization: {
+        pricing_structure: opp.monetization || 'SaaS / Recurring',
+        who_pays: opp.target_customer,
+        value_prop: 'Solving core inefficiencies identified in market signals.'
+      },
+      why_now_bullets: [opp.why_now],
+      alternatives_structured: {
+        today: ['Manual workarounds', 'Generic legacy tools'],
+        gaps: ['Infficiency', 'Lack of automation']
+      },
+      mvp_scope_bullets: ['Core workflow engine', 'User dashboard', 'Initial data integration'],
+      confidence_reasoning_bullets: [
+        opp.score_data?.summary || 'Strong alignment with market trends.',
+        'High signal detected from multiple data nodes.'
+      ],
+      risks_structured: {
+        adoption: 'User behavior shift',
+        technical: 'Standard scalability',
+        market: 'Competition speed'
+      },
+      confidence_score: opp.score_data?.score || 85,
+      market_score: 80,
+      execution_complexity: 40,
+      id: opp.id || crypto.randomUUID(),
+      idea_id: opp.id || crypto.randomUUID()
+    };
+    setSelectedIdea(mappedIdea);
+    setIsDetailOpen(true);
+  };
+
 
   return (
     <div className="min-h-screen bg-[#050505] text-white font-sans selection:bg-indigo-500/30 selection:text-indigo-200 relative overflow-hidden">
 
-      {/* Background Gradients */}
-      <div className="fixed top-0 left-0 w-[500px] h-[500px] bg-indigo-600/10 rounded-full blur-[120px] -translate-x-1/2 -translate-y-1/2 pointer-events-none" />
-      <div className="fixed bottom-0 right-0 w-[500px] h-[500px] bg-purple-600/10 rounded-full blur-[120px] translate-x-1/2 translate-y-1/2 pointer-events-none" />
-      <div className="absolute inset-0 bg-[url('/grid.svg')] bg-center [mask-image:linear-gradient(180deg,white,rgba(255,255,255,0))]" />
+      {/* Soft Ambient Backgrounds */}
+      <div className="absolute top-0 right-0 w-[600px] h-[600px] bg-indigo-500/10 rounded-full blur-[150px] pointer-events-none" />
+      <div className="absolute bottom-0 left-0 w-[600px] h-[600px] bg-emerald-500/5 rounded-full blur-[150px] pointer-events-none" />
 
       <div className="max-w-7xl mx-auto px-6 py-20 relative z-10">
         {/* STARTUP PIPELINE */}
@@ -410,90 +381,118 @@ export default function IdeaGeneratorPage() {
           </div>
         )}
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          <div className="col-span-1 lg:col-span-2 space-y-8 text-left">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-12">
+          {/* Main Content Area (Left) */}
+          <div className="col-span-1 lg:col-span-8 space-y-8 text-left flex flex-col gap-8">
             {/* THINKING MODE */}
             {isThinking && (
               <ThinkingPanel onComplete={onThinkingComplete} />
             )}
 
-            {/* 2. INPUT ZONE */}
-            {!generatedIdeas.length && !opportunityIdeas.length && !isGenerating && !isThinking && (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-8 animate-in fade-in duration-200">
-                {/* USER IDEA INPUT */}
-                <div className="group relative flex flex-col bg-[#0A0A0A] border border-white/10 rounded-2xl p-8 backdrop-blur-xl hover:border-indigo-500/50 transition-all duration-300">
-                  <div className="flex items-center space-x-3 mb-6">
-                    <Lightbulb className="w-5 h-5 text-indigo-400" />
-                    <h2 className="text-xl font-bold text-white">Validate Idea</h2>
+            {/* 2. INPUT ZONE (Friendly Redesign) */}
+            {!displayIdeas.length && !isLoading && !isThinking && (
+              <div className="max-w-3xl mx-auto w-full animate-in fade-in zoom-in-95 duration-700 space-y-8">
+
+                {/* USER IDEA INPUT - The "Magic Prompt" */}
+                <div className="relative group">
+                  <div className="absolute -inset-1 bg-gradient-to-r from-indigo-500/20 to-purple-500/20 rounded-[2.5rem] blur-xl opacity-50 group-hover:opacity-100 transition duration-1000 group-hover:duration-200" />
+                  <div className="relative bg-[#09090b]/80 backdrop-blur-xl border border-white/5 rounded-[2rem] p-3 shadow-2xl overflow-hidden transition-all hover:border-white/10">
+                    <div className="px-6 pt-6 pb-2">
+                      <h2 className="text-xl font-bold text-white flex items-center gap-3 mb-2">
+                        <div className="p-2 bg-indigo-500/10 rounded-xl text-indigo-400">
+                          <Lightbulb size={20} />
+                        </div>
+                        What are you building?
+                      </h2>
+                      <p className="text-zinc-500 text-sm ml-12">Describe the problem or idea in natural language.</p>
+                    </div>
+
+                    <textarea
+                      id="user-idea"
+                      value={userIdeaInput}
+                      onChange={(e) => setUserIdeaInput(e.target.value)}
+                      placeholder="e.g. A marketplace for local chefs to host private dining experiences..."
+                      className="w-full bg-transparent border-none p-6 text-lg text-white placeholder:text-zinc-700 placeholder:font-light focus:outline-none focus:ring-0 resize-none min-h-[160px]"
+                    />
+
+                    <div className="flex items-center justify-between px-4 pb-4 mt-2">
+                      <div className="flex gap-2">
+                        {/* Optional tiny tools/badges could go here */}
+                      </div>
+                      <button
+                        onClick={handleGenerateUser}
+                        disabled={!userIdeaInput.trim()}
+                        className="inline-flex items-center justify-center px-8 py-3.5 bg-white text-black hover:bg-indigo-500 hover:text-white text-sm font-bold uppercase tracking-widest rounded-xl transition-all shadow-lg disabled:opacity-50 disabled:cursor-not-allowed group-hover:scale-[1.02] active:scale-95 duration-200"
+                      >
+                        Deep Dive
+                        <ArrowRight className="w-4 h-4 ml-2" />
+                      </button>
+                    </div>
                   </div>
-                  <textarea
-                    id="user-idea"
-                    value={userIdeaInput}
-                    onChange={(e) => setUserIdeaInput(e.target.value)}
-                    placeholder="Describe the startup idea or problem you're thinking about..."
-                    className="flex-1 w-full bg-white/5 border border-white/10 rounded-xl p-4 text-base text-white placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-transparent transition-all resize-none min-h-[160px]"
-                  />
-                  <button
-                    onClick={handleGenerateUser}
-                    disabled={!userIdeaInput.trim()}
-                    className="mt-6 inline-flex items-center justify-center px-6 py-4 bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-bold rounded-xl transition-all shadow-lg shadow-indigo-500/20 disabled:opacity-50 disabled:cursor-not-allowed group-hover:scale-[1.02] active:scale-95 duration-200"
-                  >
-                    <span>Analyze Opportunity</span>
-                    <ArrowRight className="w-4 h-4 ml-2" />
-                  </button>
                 </div>
 
-                {/* ONE-CLICK DISCOVERY */}
-                <div className="group relative flex flex-col bg-[#0A0A0A] border border-white/10 rounded-2xl p-8 backdrop-blur-xl hover:border-emerald-500/50 transition-all duration-300 justify-center items-center text-center">
-                  <div className="w-16 h-16 bg-gradient-to-br from-emerald-500/20 to-teal-500/20 rounded-2xl border border-emerald-500/30 flex items-center justify-center mb-6 shadow-[0_0_30px_-5px_rgba(16,185,129,0.3)] group-hover:scale-110 transition-transform duration-500">
-                    <Sparkles className="w-8 h-8 text-emerald-400" />
+                {/* ONE-CLICK DISCOVERY - Magical Banner */}
+                <div className="relative overflow-hidden rounded-[2rem] border border-emerald-500/20 bg-emerald-500/5 hover:bg-emerald-500/10 transition-colors duration-500 cursor-pointer group" onClick={handleGenerateAuto}>
+                  <div className="absolute top-0 right-0 w-64 h-full bg-gradient-to-l from-emerald-500/10 to-transparent pointer-events-none" />
+                  <div className="p-8 flex flex-col md:flex-row items-center justify-between gap-6 relative z-10">
+                    <div className="flex items-center gap-6 text-center md:text-left">
+                      <div className="w-14 h-14 bg-emerald-500/10 border border-emerald-500/20 rounded-2xl flex items-center justify-center shrink-0 group-hover:scale-110 group-hover:rotate-6 transition-all duration-500">
+                        <Sparkles className="w-6 h-6 text-emerald-400 group-hover:animate-pulse" />
+                      </div>
+                      <div>
+                        <h3 className="text-lg font-bold text-white mb-1">Feeling stuck? Let the AI discover ideas.</h3>
+                        <p className="text-emerald-400/80 text-sm">We'll scan thousands of live market signals to find gaps for you.</p>
+                      </div>
+                    </div>
+                    <button
+                      className="shrink-0 flex items-center gap-2 px-6 py-3 bg-[#09090b] text-white border border-emerald-500/30 group-hover:border-emerald-500 text-sm font-bold rounded-xl transition-all shadow-xl group-hover:shadow-emerald-500/20"
+                    >
+                      <Search className="w-4 h-4" />
+                      Explore Signals
+                    </button>
                   </div>
-                  <h3 className="text-xl font-bold text-white mb-3">Discover Opportunities</h3>
-                  <p className="text-zinc-500 text-sm leading-relaxed mb-8 px-4">
-                    Let Smartbuilder surface high-potential ideas based on <span className="text-emerald-400 font-medium">live market gaps</span>.
-                  </p>
-                  <button
-                    onClick={handleGenerateAuto}
-                    className="w-full inline-flex items-center justify-center px-8 py-4 bg-white/5 hover:bg-white/10 border border-white/10 hover:border-emerald-500/50 text-white text-sm font-bold rounded-xl transition-all group-hover:shadow-[0_0_20px_-5px_rgba(16,185,129,0.2)]"
-                  >
-                    <Search className="w-4 h-4 mr-2 text-emerald-400" />
-                    Generate Best Ideas
-                  </button>
                 </div>
+
               </div>
             )}
 
             {/* LOADING STATE */}
-            {isGenerating && (
-              <div className="py-24 flex flex-col items-center justify-center text-center animate-in fade-in duration-200 relative">
+            {isLoading && (
+              <div className="h-[400px] flex flex-col items-center justify-center space-y-6 bg-[#18181b]/30 border border-[#27272a] border-dashed rounded-[2.5rem]">
                 <div className="relative">
-                  <div className="w-20 h-20 border-t-2 border-indigo-500 rounded-full animate-spin"></div>
-                  <div className="absolute inset-0 flex items-center justify-center">
-                    <BrainCircuit className="w-8 h-8 text-white/50 animate-pulse" />
+                  <div className="absolute inset-0 bg-indigo-500/20 blur-3xl rounded-full" />
+                  <div className="w-16 h-16 rounded-2xl bg-[#09090b] border border-indigo-500/30 flex items-center justify-center relative">
+                    <BrainCircuit className="text-indigo-400 animate-pulse" size={32} />
                   </div>
                 </div>
-                <h3 className="text-2xl font-bold text-white mt-8 mb-2">Analyzing Signals</h3>
-                <p className="text-zinc-500 max-w-md mx-auto">
-                  Connecting to live data sources and validating demand...
-                </p>
+                <div className="text-center space-y-2">
+                  <p className="font-bold text-white uppercase tracking-widest">Analyzing Signals</p>
+                  <p className="text-gray-500 text-sm">Connecting to live data sources and validating demand...</p>
+                </div>
               </div>
             )}
 
-            {/* ENGINE RESULTS AREA */}
-            {!isThinking && showOpportunities && (
+            {/* UNIFIED RESULTS AREA */}
+            {!isLoading && !isThinking && displayIdeas.length > 0 && (
               <div className="space-y-12 animate-in slide-in-from-bottom-8 duration-500">
                 <div className="flex items-center justify-between border-b border-white/5 pb-6">
                   <div>
                     <h2 className="text-3xl font-extrabold text-white flex items-center mb-2">
                       <Sparkles className="w-8 h-8 mr-4 text-emerald-400" />
-                      Venture Opportunities
+                      {generationType === 'auto' ? 'Venture Opportunities' : 'Detected Opportunities'}
                     </h2>
-                    <p className="text-zinc-500 text-sm">Detected from 12,483 real-time market signals</p>
+                    <p className="text-zinc-500 text-sm">
+                      {generationType === 'auto'
+                        ? 'Detected from 12,483 real-time market signals'
+                        : 'Validated and refined for your specific concept'}
+                    </p>
                   </div>
                   <button
                     onClick={() => {
-                      setOpportunityIdeas([]);
-                      setShowOpportunities(false);
+                      setDisplayIdeas([]);
+                      setUserIdeaInput('');
+                      setSelectedIdea(null);
+                      setIsDetailOpen(false);
                     }}
                     className="text-xs font-bold text-zinc-500 hover:text-white uppercase tracking-widest transition-colors flex items-center"
                   >
@@ -502,46 +501,8 @@ export default function IdeaGeneratorPage() {
                   </button>
                 </div>
 
-                <div className="grid grid-cols-1 gap-8">
-                  {opportunityIdeas.map((idea, index) => (
-                    <OpportunityCard
-                      key={index}
-                      idea={idea}
-                      onResearch={() => {
-                        setUserIdeaInput(idea.title + ': ' + idea.problem);
-                        setShowOpportunities(false);
-                        handleGenerateUser();
-                      }}
-                    />
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* VALIDATION RESULTS AREA */}
-            {!isGenerating && generatedIdeas.length > 0 && (
-              <div className="space-y-8 animate-in slide-in-from-bottom-8 duration-200">
-                <div className="flex items-center justify-between">
-                  <h2 className="text-xl font-bold text-white flex items-center">
-                    <Activity className="w-5 h-5 mr-3 text-indigo-400" />
-                    Detected Opportunities
-                  </h2>
-                  <button
-                    onClick={() => {
-                      setGeneratedIdeas([]);
-                      setUserIdeaInput('');
-                      setSelectedIdea(null);
-                      setIsDetailOpen(false);
-                    }}
-                    className="text-[10px] font-bold text-zinc-500 hover:text-white uppercase tracking-widest transition-colors flex items-center"
-                  >
-                    <X className="w-4 h-4 mr-2" />
-                    Reset
-                  </button>
-                </div>
-
-                <div className="grid grid-cols-1 gap-4 text-left">
-                  {generatedIdeas.map((idea, index) => (
+                <div className="grid grid-cols-1 gap-6">
+                  {displayIdeas.map((idea, index) => (
                     <IdeaCard
                       key={idea.idea_id || `idea-${index}`}
                       idea={idea}
@@ -554,10 +515,8 @@ export default function IdeaGeneratorPage() {
             )}
           </div>
 
-          <div className="col-span-1 border-l border-white/5 pl-8">
-            <div className="sticky top-24 h-[calc(100vh-8rem)]">
-              <LiveMarketSignals onSignalClick={handleGenerateFromSignal} isGenerating={isGenerating || isThinking} />
-            </div>
+          <div className="col-span-1 lg:col-span-4 lg:h-[calc(100vh-140px)] sticky top-6">
+            <LiveMarketSignals onSignalClick={handleGenerateFromSignal} isGenerating={isLoading || isThinking} />
           </div>
         </div>
       </div>
@@ -566,7 +525,11 @@ export default function IdeaGeneratorPage() {
       <IdeaDetailPanel
         idea={selectedIdea}
         isOpen={isDetailOpen}
-        onClose={() => setIsDetailOpen(false)}
+        onClose={() => {
+          setIsDetailOpen(false);
+          // We clear the selected idea to reset the panel state
+          setTimeout(() => setSelectedIdea(null), 500); 
+        }}
         onPromote={handlePromote}
         isPromoting={false}
       />

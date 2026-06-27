@@ -30,7 +30,7 @@ export default function TopContextBar() {
     const [showPaywall, setShowPaywall] = React.useState(false);
 
     React.useEffect(() => {
-        fetchSubscription('demo-org-id');
+        fetchSubscription();
     }, [fetchSubscription]);
 
     const isFrozen = uiState === 'S6';

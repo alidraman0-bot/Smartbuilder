@@ -64,7 +64,7 @@ export default function IntelligenceLayerPage() {
     // Fetch or generate Business Plan & PRD (Fallback logic)
     useEffect(() => {
         if (!(run.research as any) || !(run.research as any).idea || isGenerating.current) {
-            if (!(run.research as any)?.idea && !run.runId) {
+            if (!(run.research as any)?.idea) {
                 // If it's been several seconds and we still don't have basic run data, something is wrong
                 const errorTimer = setTimeout(() => {
                     if (!(run.research as any)?.idea) setError("Missing idea data. Please start a new run.");

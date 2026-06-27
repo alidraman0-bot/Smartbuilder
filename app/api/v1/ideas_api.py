@@ -1,4 +1,5 @@
-from fastapi import APIRouter, HTTPException, Depends, Header
+import asyncio
+from fastapi import APIRouter, HTTPException, Depends, Header, Body
 from pydantic import BaseModel
 from typing import Optional, List, Dict, Any, Literal
 from datetime import datetime
@@ -6,9 +7,14 @@ from app.core.config import settings
 from app.services.idea_service import idea_service
 from app.services.rate_limiter_service import rate_limiter_service
 import logging
+from app.workflows.discovery.idea_pipeline import idea_pipeline
+from app.workflows.discovery.signal_pipeline import signal_pipeline
+from app.models.investment_brief import IdeaDetailsRequest, InvestmentBriefResponse
+from app.services.investment_brief_service import investment_brief_service
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+discovery_engine_router = APIRouter()
 
 class GenerateRequest(BaseModel):
     mode: Literal["validate_idea", "discover"]
@@ -21,36 +27,34 @@ class PromoteRequest(BaseModel):
 async def get_user_id_from_header(authorization: Optional[str] = Header(None)) -> Optional[str]:
     """
     Extract user_id from authorization header (Supabase JWT).
-    Returns None if no token or invalid token (anonymous usage).
     """
     if not authorization:
         return None
 
     try:
-        scheme, token = authorization.split()
-        if scheme.lower() != "bearer":
+        parts = authorization.split()
+        if len(parts) != 2 or parts[0].lower() != "bearer":
             return None
         
+        token = parts[1]
         from app.core.auth import verify_supabase_token
-        # This raises HTTPException if invalid, but we want to allow anonymous fallback for now?
-        # Actually, if they send a token, they EXPECT to be logged in. 
-        # If the token is invalid, we should probably ignore it and treat as anonymous, 
-        # OR raise 401. 
-        # Given the frontend behavior (if session exists, send token), invalid token should probably be 401?
-        # But for robustness, let's log and fall back to anonymous to prevent 500s.
+        
         try:
              user_data = await verify_supabase_token(token)
              return user_data.get("id")
-        except HTTPException:
-             # Token expired or invalid
-             logger.warning(f"Invalid token provided in ideas API: {token[:10]}...")
+        except HTTPException as he:
+             # Standard auth failure (expired/invalid)
+             if he.status_code == 401:
+                 logger.info(f"Auth Session: Expired or invalid token (falling back to anonymous)")
+             else:
+                 logger.warning(f"Auth Error: {he.detail}")
              return None
         except Exception as e:
-             logger.error(f"Error verifying token in ideas API: {e}")
+             logger.error(f"Unexpected Auth Error: {e}")
              return None
              
     except Exception as e:
-        logger.warning(f"Malformed authorization header: {authorization[:20]}...")
+        logger.debug(f"Malformed auth header ignored: {e}")
         return None
 
 async def get_default_project_id(user_id: Optional[str] = None) -> str:
@@ -98,17 +102,9 @@ async def generate_ideas(
     user_id: Optional[str] = Depends(get_user_id_from_header)
 ):
     """
-    Generate or validate startup ideas with production seed-based system.
-    
-    Features:
-    - Atomic seed reservation (prevents race conditions)
-    - Batch AI generation (80% cost reduction)
-    - Rate limiting with plan-based tiers
-    - Per-project + per-user uniqueness
-    - Automatic retry with seed release
+    Generate or validate startup ideas with the new Intelligence Discovery Engine.
     """
     try:
-        start_time = datetime.now()
         # Get project ID (from request or default)
         project_id = request.project_id or await get_default_project_id(user_id)
         
@@ -119,72 +115,30 @@ async def generate_ideas(
         )
         
         if not rate_check["allowed"]:
-            raise HTTPException(
-                status_code=429, 
-                detail={
-                    "error": "Rate limit exceeded",
-                    "reason": rate_check["reason"],
-                    "usage_minute": rate_check["usage_minute"],
-                    "usage_day": rate_check["usage_day"],
-                    "limit_minute": rate_check["limit_minute"],
-                    "limit_day": rate_check["limit_day"],
-                    "plan_type": rate_check["plan_type"]
-                }
-            )
-        
-        # Determine organization ID
-        from app.core.supabase import get_service_client
-        svc_client = get_service_client()
-        org_id = None
-        try:
-            if user_id:
-                # Use org_members table which has org_id linked to user_id
-                org_res = svc_client.table("org_members").select("org_id").eq("user_id", user_id).limit(1).execute()
-                if org_res.data:
-                    org_id = org_res.data[0].get("org_id")
-        except Exception as e:
-            logger.warning(f"Failed to lookup org for user {user_id}: {e}. Falling back to default.")
-        
-        if not org_id:
-            # Fallback to null org_id for anonymous / org-less users
-            org_id = None
+            raise HTTPException(status_code=429, detail={"error": "Rate limit exceeded", "reason": rate_check["reason"]})
 
-        from app.services.billing_service import billing_service
-        plan_features = billing_service.get_plan_features_for_org(org_id)
-        ideas_per_click = plan_features.get("ideas_per_click", 5)
-
-        # Generate ideas using production seed-based method
-        logger.info(f"Generating {ideas_per_click} ideas for project {project_id[:8]}... (user: {user_id or 'anonymous'}, plan: {plan_features.get('plan', 'free')})")
-        
-        response = await idea_service.generate_ideas_with_seeds(
-            project_id=project_id,
-            user_id=user_id,
-            mode=request.mode,
-            user_input=request.user_input,
-            count=5
+        # Use the new IdeaPipeline for strategic discovery/validation
+        mode = "deep" if request.mode == "discover" else "basic"
+        response = await idea_pipeline.run_discovery(
+            seed_idea=request.user_input or "New startup idea",
+            mode=mode
         )
         
-        duration = (datetime.now() - start_time).total_seconds()
-        logger.info(f"Generation completed in {duration}s. Response items: {len(response)}")
+        ideas = response.get("ideas", [])
         
-        # 5. Record Usage (Async)
-        try:
-             # Use background task in real world, awaiting here for simplicity/safety
-             pass 
-             # usage recording is inside record_usage but we need to call it if we want billing?
-             # rate_limiter_service.record_usage(...) 
-             # But idea_service handles its own logic? 
-             # actually idea_service doesn't call record_usage. We should do it here if successful.
-             if user_id and response:
-                 await rate_limiter_service.record_usage(
-                     user_id=user_id,
-                     project_id=project_id,
-                     ideas_generated=len(response)
-                 )
-        except Exception as billing_e:
-             logger.error(f"Billing record failed: {billing_e}")
+        # Record Usage
+        if user_id and ideas:
+            await rate_limiter_service.record_usage(
+                user_id=user_id,
+                project_id=project_id,
+                ideas_generated=len(ideas)
+            )
 
-        return response
+        return ideas
+
+    except Exception as e:
+        logger.error(f"Generation failure: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
     except HTTPException:
         raise
@@ -192,15 +146,71 @@ async def generate_ideas(
         import traceback
         error_msg = f"CRITICAL ERROR in generate_ideas API: {str(e)}"
         logger.error(f"{error_msg}\n{traceback.format_exc()}")
-        # Return clearer error to client
         raise HTTPException(
             status_code=500, 
-            detail={
-                "error": str(e), 
-                "message": "Internal generation failure. Please try again.",
-                "traceback": traceback.format_exc() if settings.OPENAI_API_KEY or settings.GOOGLE_API_KEY else "Traceback hidden in production"
-            }
+            detail={"error": str(e), "message": "Internal generation failure."}
         )
+
+class DiscoveryRequest(BaseModel):
+    project_id: Optional[str] = None
+
+@router.get("/discovery")
+async def discovery_ideas_status():
+    """
+    Check the status of the Intelligence Discovery Engine.
+    """
+    return {
+        "status": "operational",
+        "engine": "Intelligence Discovery V2",
+        "capabilities": ["Signal Analysis", "Venture Scoring", "Deep Market Scan"],
+        "message": "Discovery engine is online. Use POST to trigger a deep scan."
+    }
+
+@router.post("/discovery")
+async def discovery_ideas(
+    request: DiscoveryRequest,
+    user_id: Optional[str] = Depends(get_user_id_from_header)
+):
+    """
+    INTELLIGENCE DISCOVERY: Real-world signal based opportunity detection.
+    """
+    try:
+        # Use a generic seed to trigger discovery across live signals
+        # Wrap in a timeout to prevent socket hang-ups when AI providers are unreachable
+        logger.info("Discovery API: Starting deep discovery scan...")
+        start_time = asyncio.get_event_loop().time()
+        
+        response = await asyncio.wait_for(
+            idea_pipeline.run_discovery(
+                seed_idea="emerging startup opportunities in SaaS and AI",
+                mode="deep"
+            ),
+            timeout=90.0  # Increased to 90s to accommodate deep signal analysis + parallel structuring
+        )
+        
+        duration = asyncio.get_event_loop().time() - start_time
+        logger.info(f"Discovery API: Completed deep discovery in {duration:.2f}s")
+        
+        ideas = response.get("ideas", [])
+        return ideas
+    except Exception as e:
+        import traceback
+        error_str = str(e)
+        duration = asyncio.get_event_loop().time() - start_time if 'start_time' in locals() else 0
+        
+        # Check if it's an expected issue to give a better warning without a full stack trace
+        is_timeout = isinstance(e, (TimeoutError, asyncio.TimeoutError))
+        is_quota = any(x in error_str.lower() for x in ["quota", "429", "balance", "402", "credit"])
+        
+        if is_timeout:
+            logger.error(f"Discovery API timed out after {duration:.2f}s (providers too slow).")
+            raise HTTPException(status_code=504, detail="Unable to fetch AI data. Please try again.")
+        elif is_quota:
+            logger.error(f"Discovery API quota/balance exceeded: {error_str}")
+            raise HTTPException(status_code=402, detail="Unable to fetch AI data. AI Service Quota Exhausted.")
+        else:
+            logger.error(f"Discovery API failed after {duration:.2f}s: {e}\n{traceback.format_exc()}")
+            raise HTTPException(status_code=500, detail="Unable to fetch AI data. Please try again.")
 
 from app.api.supervisor import runner
 import asyncio
@@ -219,6 +229,62 @@ async def promote_idea(request: PromoteRequest):
     asyncio.create_task(runner.start_research_from_idea(result["idea"]))
     
     return result
+
+# --- DISCOVERY ENGINE ENDPOINTS ---
+
+class IdeaDiscoveryRequest(BaseModel):
+    idea: str
+    mode: Literal["basic", "deep"] = "basic"
+
+@discovery_engine_router.post("/generate-ideas")
+async def generate_discovery_ideas(
+    request: IdeaDiscoveryRequest,
+    user_id: Optional[str] = Depends(get_user_id_from_header)
+):
+    """
+    POST /api/generate-ideas
+    Transform User Idea -> Internet Signals -> Structured Intelligence -> Validated Opportunities
+    """
+    try:
+        return await idea_pipeline.run_discovery(
+            seed_idea=request.idea,
+            mode=request.mode
+        )
+    except Exception as e:
+        logger.error(f"Discovery generation failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@discovery_engine_router.get("/live-signals")
+async def get_live_signals():
+    """
+    GET /api/live-signals
+    Power the right-side UI panel with real-time intelligence.
+    """
+    try:
+        signals = await signal_pipeline.fetch_live_signals()
+        return {"signals": signals}
+    except Exception as e:
+        logger.error(f"Failed to fetch live signals: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@discovery_engine_router.post("/idea-details", response_model=InvestmentBriefResponse)
+async def get_idea_details(
+    request: IdeaDetailsRequest,
+    user_id: Optional[str] = Depends(get_user_id_from_header)
+):
+    """
+    POST /api/idea-details
+    Generate deep, structured, investor-grade analysis for any startup idea.
+    """
+    try:
+        return await investment_brief_service.generate_brief(
+            idea_data=request.idea,
+            mode=request.mode,
+            user_id=user_id
+        )
+    except Exception as e:
+        logger.error(f"Failed to generate idea details: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/debug/history")
 async def debug_history():

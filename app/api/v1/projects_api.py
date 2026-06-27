@@ -48,6 +48,23 @@ async def delete_project(project_id: str):
     project_service.delete_project(project_id)
     return {"status": "success"}
 
+@router.get("/{project_id}/files")
+async def get_project_files(project_id: str):
+    return project_service.get_project_files(project_id)
+
+@router.get("/{project_id}/export")
+async def export_project(project_id: str):
+    from fastapi.responses import StreamingResponse
+    try:
+        zip_buffer = project_service.get_project_zip(project_id)
+        return StreamingResponse(
+            iter([zip_buffer.getvalue()]), 
+            media_type="application/x-zip-compressed",
+            headers={"Content-Disposition": f"attachment; filename=project-{project_id}.zip"}
+        )
+    except Exception as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
 # --- Environment Variables ---
 @router.get("/{project_id}/env")
 async def list_env_vars(project_id: str):

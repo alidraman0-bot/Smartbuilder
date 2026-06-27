@@ -11,6 +11,8 @@ import { usePreferenceStore } from '@/store/usePreferenceStore';
 import { useBillingStore } from '@/store/useBillingStore';
 import { hasFeature, type FeatureKey } from '@/utils/feature-gating';
 import PaywallModal from '@/components/billing/PaywallModal';
+import { apiFetch } from '@/lib/apiClient';
+import { getAuthHeaders } from '@/utils/supabase/auth';
 
 // Default values as per spec
 const DEFAULT_PREFERENCES = {
@@ -70,7 +72,7 @@ export default function SettingsPage() {
   const { subscription, fetchSubscription } = useBillingStore();
 
   useEffect(() => {
-    fetchSubscription('demo-org-id');
+    fetchSubscription();
   }, [fetchSubscription]);
 
   // For API Keys (existing functionality)
@@ -79,6 +81,11 @@ export default function SettingsPage() {
     anthropic_api_key: '',
     google_api_key: '',
     testsprite_api_key: '',
+    bright_data_key: '',
+    scraperapi_key: '',
+    apify_token: '',
+    diffbot_token: '',
+    serpapi_key: '',
   });
 
   useEffect(() => {
@@ -117,10 +124,18 @@ export default function SettingsPage() {
         if (apiKeys.anthropic_api_key) payload.anthropic_api_key = apiKeys.anthropic_api_key;
         if (apiKeys.google_api_key) payload.google_api_key = apiKeys.google_api_key;
         if (apiKeys.testsprite_api_key) payload.testsprite_api_key = apiKeys.testsprite_api_key;
+        
+        // Discovery Keys
+        if (apiKeys.bright_data_key) payload.bright_data_key = apiKeys.bright_data_key;
+        if (apiKeys.scraperapi_key) payload.scraperapi_key = apiKeys.scraperapi_key;
+        if (apiKeys.apify_token) payload.apify_token = apiKeys.apify_token;
+        if (apiKeys.diffbot_token) payload.diffbot_token = apiKeys.diffbot_token;
+        if (apiKeys.serpapi_key) payload.serpapi_key = apiKeys.serpapi_key;
 
-        await fetch('/api/v1/settings/keys/update', {
+        const headers = await getAuthHeaders();
+        await apiFetch('/api/v1/settings/keys/update', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers,
           body: JSON.stringify(payload),
         });
 
@@ -130,6 +145,11 @@ export default function SettingsPage() {
           anthropic_api_key: '',
           google_api_key: '',
           testsprite_api_key: '',
+          bright_data_key: '',
+          scraperapi_key: '',
+          apify_token: '',
+          diffbot_token: '',
+          serpapi_key: '',
         });
       }
 
@@ -155,6 +175,7 @@ export default function SettingsPage() {
     { id: 'memory', label: 'Project Memory', icon: History },
     { id: 'ai', label: 'AI Behavior', icon: Brain },
     { id: 'collab', label: 'Collaboration', icon: Users },
+    { id: 'intelligence', label: 'Intelligence & Data', icon: Globe },
     { id: 'exec', label: 'Execution', icon: Rocket },
     { id: 'security', label: 'Security', icon: Shield },
     { id: 'notifications', label: 'Notifications', icon: Bell },
@@ -422,6 +443,54 @@ export default function SettingsPage() {
               options={['Owners only', 'Owners + editors']}
               onChange={(val: any) => handleUpdatePreference('audit_log_visibility', val)}
             />
+          </Section>
+
+          {/* INTELLIGENCE & DATA SECTION */}
+          <Section id="intelligence" title="Intelligence & Data" subtitle="Connect the Discovery Engine to the global internet.">
+            <div className="space-y-8">
+              <div className="p-4 bg-indigo-500/10 border border-indigo-500/20 rounded-2xl">
+                <div className="flex items-center space-x-3 mb-2">
+                  <Globe className="text-indigo-400 w-5 h-5" />
+                  <h4 className="text-sm font-bold text-white">Internet Screening Connectivity</h4>
+                </div>
+                <p className="text-xs text-zinc-400">
+                  These keys allow Smartbuilder to scan Reddit, X/Twitter, Google Trends, and the broader web in real-time.
+                </p>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <ApiKeyInput
+                  label="Bright Data API Key"
+                  placeholder="API Key for high-scale scraping"
+                  value={apiKeys.bright_data_key}
+                  onChange={(val: any) => setApiKeys({ ...apiKeys, bright_data_key: val })}
+                />
+                <ApiKeyInput
+                  label="ScraperAPI Key"
+                  placeholder="Fallback scraping key"
+                  value={apiKeys.scraperapi_key}
+                  onChange={(val: any) => setApiKeys({ ...apiKeys, scraperapi_key: val })}
+                />
+                <ApiKeyInput
+                  label="Apify API Token"
+                  placeholder="apify_proxy_..."
+                  value={apiKeys.apify_token}
+                  onChange={(val: any) => setApiKeys({ ...apiKeys, apify_token: val })}
+                />
+                <ApiKeyInput
+                  label="SerpAPI Key"
+                  placeholder="For Google Trends & Search intelligence"
+                  value={apiKeys.serpapi_key}
+                  onChange={(val: any) => setApiKeys({ ...apiKeys, serpapi_key: val })}
+                />
+                <ApiKeyInput
+                  label="Diffbot Token"
+                  placeholder="For AI data structuring"
+                  value={apiKeys.diffbot_token}
+                  onChange={(val: any) => setApiKeys({ ...apiKeys, diffbot_token: val })}
+                />
+              </div>
+            </div>
           </Section>
 
           {/* EXECUTION & DEPLOYMENT */}

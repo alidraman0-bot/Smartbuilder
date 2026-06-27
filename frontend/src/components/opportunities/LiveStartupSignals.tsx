@@ -11,13 +11,16 @@ import {
     ExternalLink,
     AlertCircle
 } from 'lucide-react';
+import { apiFetch } from '@/lib/apiClient';
+
+import { getAuthHeaders } from '@/utils/supabase/auth';
 
 interface MarketSignal {
     id: string;
     source: string;
-    topic: string;
-    summary: string;
-    trend_score: number;
+    title: string;
+    description: string;
+    signal_strength: number;
     created_at: string;
 }
 
@@ -30,9 +33,8 @@ export default function LiveStartupSignals() {
     const fetchSignals = async () => {
         try {
             setLoading(true);
-            const res = await fetch('/api/v1/market-signals');
-            if (!res.ok) throw new Error('Failed to fetch signals');
-            const data = await res.json();
+            const headers = await getAuthHeaders();
+            const data = await apiFetch<MarketSignal[]>('/api/v1/market-signals', { headers });
             setSignals(data);
             setError(null);
         } catch (err: any) {
@@ -45,8 +47,8 @@ export default function LiveStartupSignals() {
     const handleSync = async () => {
         try {
             setIsSyncing(true);
-            const res = await fetch('/api/v1/market-signals/sync', { method: 'POST' });
-            if (!res.ok) throw new Error('Failed to trigger sync');
+            const headers = await getAuthHeaders();
+            await apiFetch('/api/v1/market-signals/sync', { method: 'POST', headers });
             // Give it a few seconds to run in background before fetching fresh data
             setTimeout(fetchSignals, 5000);
         } catch (err: any) {
@@ -62,7 +64,8 @@ export default function LiveStartupSignals() {
         return () => clearInterval(interval);
     }, []);
 
-    const getSourceIcon = (source: string) => {
+    const getSourceIcon = (source?: string) => {
+        if (!source) return <Activity className="w-4 h-4 text-violet-400" />;
         const s = source.toLowerCase();
         if (s.includes('reddit')) return <MessageSquare className="w-4 h-4 text-[#ff4500]" />;
         if (s.includes('product hunt')) return <Zap className="w-4 h-4 text-[#da552f]" />;
@@ -125,7 +128,7 @@ export default function LiveStartupSignals() {
                                         {getSourceIcon(signal.source)}
                                         <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">{signal.source}</span>
                                     </div>
-                                    {signal.trend_score > 80 && (
+                                    {signal.signal_strength > 80 && (
                                         <div className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/20">
                                             <TrendingUp className="w-3 h-3 text-emerald-400" />
                                             <span className="text-[10px] font-bold text-emerald-400">HOT</span>
@@ -133,10 +136,10 @@ export default function LiveStartupSignals() {
                                     )}
                                 </div>
                                 <h4 className="text-sm font-semibold text-white mb-2 leading-snug group-hover:text-violet-300 transition-colors">
-                                    {signal.topic}
+                                    {signal.title}
                                 </h4>
                                 <p className="text-xs text-gray-500 line-clamp-2 leading-relaxed">
-                                    {signal.summary}
+                                    {signal.description}
                                 </p>
                             </motion.div>
                         ))}

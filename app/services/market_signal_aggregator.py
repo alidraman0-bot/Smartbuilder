@@ -12,34 +12,40 @@ class MarketSignalAggregator:
         self.market_signal_service = MarketSignalService()
         self.trend_service = TrendSignalService()
         self.funding_service = FundingSignalService()
-
     async def aggregate_market_data(self, startup_idea: str, idea_id: Optional[str] = None) -> Dict[str, Any]:
         """
         Coordinates all signals services to build a comprehensive market evidence object.
         """
         try:
-            # 1. Extract Keywords (Base for trends and funding news)
+            # 1. Startup Sequential Baseline Tasks (FIX 3)
+            # Competitor detection
+            try:
+                competitors = await self.market_signal_service.detect_competitors(startup_idea, idea_id)
+            except Exception as e:
+                logger.error(f"Competitor service failed: {e}")
+                competitors = []
+
+            await asyncio.sleep(1.0) # Rate limit protection
+
+            # 2. Extract Keywords (Checks DB cache first)
             keywords = await self.market_signal_service.extract_market_keywords(startup_idea, idea_id)
-            
-            # 2. Parallel fetch for Trends, Competitors, and Funding
-            # Use return_exceptions=True to prevent one failure from killing the whole batch
-            results = await asyncio.gather(
-                self.trend_service.get_trend_signals(keywords[:5], idea_id),
-                self.market_signal_service.detect_competitors(startup_idea, idea_id),
-                self.funding_service.get_funding_signals(keywords, idea_id),
-                return_exceptions=True
-            )
-            
-            trend_signals = results[0] if not isinstance(results[0], Exception) else []
-            competitors = results[1] if not isinstance(results[1], Exception) else []
-            funding_data = results[2] if not isinstance(results[2], Exception) else {}
-            
-            if isinstance(results[0], Exception):
-                logger.error(f"Trend service failed: {results[0]}")
-            if isinstance(results[1], Exception):
-                logger.error(f"Competitor service failed: {results[1]}")
-            if isinstance(results[2], Exception):
-                logger.error(f"Funding service failed: {results[2]}")
+
+            await asyncio.sleep(1.0) # Rate limit protection
+
+            # 3. Sequential fetch for Trends and Funding
+            try:
+                trend_signals = await self.trend_service.get_trend_signals(keywords[:5], idea_id)
+            except Exception as e:
+                logger.error(f"Trend service failed: {e}")
+                trend_signals = []
+
+            await asyncio.sleep(1.0) # Rate limit protection
+
+            try:
+                funding_data = await self.funding_service.get_funding_signals(keywords, idea_id)
+            except Exception as e:
+                logger.error(f"Funding service failed: {e}")
+                funding_data = {}
             
             # Calculate aggregate search growth from trend signals
             avg_growth = 0

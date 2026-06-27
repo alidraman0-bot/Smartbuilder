@@ -2,6 +2,9 @@
 
 import React, { useEffect } from 'react';
 import { useMemoryStore, MemoryEvent } from '@/store/memoryStore';
+import { createClient } from '@/lib/supabase/browser';
+import { getAuthHeaders } from '@/utils/supabase/auth';
+import { apiFetch } from '@/lib/apiClient';
 import {
     History, Lightbulb, Search, FileText, Code, Rocket,
     ShieldCheck, AlertCircle, User, Bot, Clock, ChevronRight
@@ -22,10 +25,27 @@ const getEventIcon = (type: string) => {
 
 export default function MemoryTimelinePage() {
     const { timeline, fetchTimeline, isLoading } = useMemoryStore();
-    const projectId = "00000000-0000-0000-0000-000000000000"; // Placeholder
+    const [projectId, setProjectId] = React.useState<string | null>(null);
 
     useEffect(() => {
-        fetchTimeline(projectId);
+        const initMemory = async () => {
+            try {
+                const headers = await getAuthHeaders();
+
+                const projects = await apiFetch<any[]>('/api/v1/projects', {
+                    headers
+                });
+
+                if (projects && projects.length > 0) {
+                    const id = projects[0].id || projects[0].project_id;
+                    setProjectId(id);
+                    fetchTimeline(id);
+                }
+            } catch (err) {
+                console.error("Failed to initialize memory timeline:", err);
+            }
+        };
+        initMemory();
     }, [fetchTimeline]);
 
     if (isLoading) {

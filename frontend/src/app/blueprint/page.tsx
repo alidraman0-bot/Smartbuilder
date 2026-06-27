@@ -22,6 +22,8 @@ import StartupPipeline from "@/components/layout/StartupPipeline";
 import GenerationLoader from "@/components/blueprint/GenerationLoader";
 import BlueprintCard from "@/components/blueprint/BlueprintCard";
 import ShareModal from "@/components/blueprint/ShareModal";
+import { apiFetch } from "@/lib/apiClient";
+import { getAuthHeaders } from "@/utils/supabase/auth";
 
 interface BlueprintData {
     name: string;
@@ -97,9 +99,10 @@ export default function BlueprintPage() {
         setErrorMsg(null);
         try {
             const idea = (run.research as any)?.idea;
-            const res = await fetch("/api/generate-blueprint", {
+            const headers = await getAuthHeaders();
+            const data = await apiFetch<BlueprintData>("/api/generate-blueprint", {
                 method: "POST",
-                headers: { "Content-Type": "application/json" },
+                headers,
                 body: JSON.stringify({
                     idea: idea
                         ? `${idea.title || ""}: ${idea.description || ""}`
@@ -109,12 +112,6 @@ export default function BlueprintPage() {
                 }),
             });
 
-            if (!res.ok) {
-                const err = await res.json().catch(() => ({}));
-                throw new Error(err.detail || `Server error ${res.status}`);
-            }
-
-            const data: BlueprintData = await res.json();
             setBlueprint(data);
             // Let the loader animation finish before showing the result
             setPageState("animating");
@@ -160,7 +157,7 @@ export default function BlueprintPage() {
             <div className="min-h-screen bg-[#09090b] flex flex-col">
                 <div className="max-w-7xl mx-auto w-full px-6 pt-8">
                     <div className="bg-[#18181b]/50 border border-[#27272a] rounded-3xl p-2 backdrop-blur-xl">
-                        <StartupPipeline currentStage="prd" />
+                        <StartupPipeline currentStage="PRD" />
                     </div>
                 </div>
                 <div className="flex-1 flex items-center justify-center px-6">
@@ -203,7 +200,7 @@ export default function BlueprintPage() {
             {/* Pipeline tracker */}
             <div className="max-w-7xl mx-auto px-6 pt-8">
                 <div className="bg-[#18181b]/50 border border-[#27272a] rounded-3xl p-2 backdrop-blur-xl">
-                    <StartupPipeline currentStage="prd" />
+                    <StartupPipeline currentStage="PRD" />
                 </div>
             </div>
 

@@ -10,7 +10,7 @@ interface SettingsTabProps {
     onDeleteProject: () => Promise<void>;
 }
 
-const API_BASE = 'http://localhost:8000/api/v1';
+const API_BASE = '/api/v1';
 
 export default function SettingsTab({ project, onUpdateProject, onDeleteProject }: SettingsTabProps) {
     const [activeSection, setActiveSection] = useState<'general' | 'env' | 'domains' | 'advanced'>('general');

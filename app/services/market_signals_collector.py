@@ -2,6 +2,7 @@ import logging
 import json
 import httpx
 import asyncio
+from app.core.http_client import http_client
 from typing import List, Dict, Any, Optional
 from datetime import datetime
 from pydantic import BaseModel
@@ -35,19 +36,19 @@ class MarketSignalsCollector:
         headers = {"User-Agent": "Smartbuilder-MarketSignals/1.0"}
         
         try:
-            async with httpx.AsyncClient() as client:
-                response = await client.get(url, headers=headers, timeout=10.0)
-                response.raise_for_status()
-                data = response.json()
-                
-                posts = []
-                for child in data.get("data", {}).get("children", []):
-                    post_data = child.get("data", {})
-                    title = post_data.get("title", "")
-                    selftext = post_data.get("selftext", "")
-                    if title:
-                        posts.append({"title": title, "text": selftext[:500]})
-                return posts
+            client = http_client
+            response = await client.get(url, headers=headers, timeout=10.0)
+            response.raise_for_status()
+            data = response.json()
+            
+            posts = []
+            for child in data.get("data", {}).get("children", []):
+                post_data = child.get("data", {})
+                title = post_data.get("title", "")
+                selftext = post_data.get("selftext", "")
+                if title:
+                    posts.append({"title": title, "text": selftext[:500]})
+            return posts
         except Exception as e:
             logger.error(f"Error fetching Reddit startups: {e}")
             return []
@@ -58,19 +59,19 @@ class MarketSignalsCollector:
         item_url = "https://hacker-news.firebaseio.com/v0/item/{}.json"
         
         try:
-            async with httpx.AsyncClient() as client:
-                response = await client.get(top_url, timeout=10.0)
-                response.raise_for_status()
-                story_ids = response.json()[:10]  # Get top 10
-                
-                stories = []
-                for sid in story_ids:
-                    res = await client.get(item_url.format(sid), timeout=5.0)
-                    if res.status_code == 200:
-                        data = res.json()
-                        if data and data.get("title"):
-                            stories.append({"title": data.get("title"), "text": ""})
-                return stories
+            client = http_client
+            response = await client.get(top_url, timeout=10.0)
+            response.raise_for_status()
+            story_ids = response.json()[:10]  # Get top 10
+            
+            stories = []
+            for sid in story_ids:
+                res = await client.get(item_url.format(sid), timeout=5.0)
+                if res.status_code == 200:
+                    data = res.json()
+                    if data and data.get("title"):
+                        stories.append({"title": data.get("title"), "text": ""})
+            return stories
         except Exception as e:
             logger.error(f"Error fetching Hacker News: {e}")
             return []
@@ -146,18 +147,32 @@ Return a JSON array of objects with EXACTLY this structure:
         """Main orchestration method to fetch, process, and store."""
         logger.info("Starting market signals collection...")
         
-        # 1. Fetch data concurrently
-        reddit_task = asyncio.create_task(self.fetch_reddit_startups())
-        hn_task = asyncio.create_task(self.fetch_hacker_news())
+        async def safe_fetch(coro, timeout=10.0):
+            try:
+                return await asyncio.wait_for(coro, timeout=timeout)
+            except Exception as e:
+                logger.warning(f"Fetch failed or timed out: {e}")
+                return []
+
+        # 1. Fetch data concurrently with timeouts
+        reddit_raw, hn_raw = await asyncio.gather(
+            safe_fetch(self.fetch_reddit_startups(), timeout=12.0),
+            safe_fetch(self.fetch_hacker_news(), timeout=10.0)
+        )
         
-        reddit_raw, hn_raw = await asyncio.gather(reddit_task, hn_task)
-        
-        # 2. Process data with AI
+        # 2. Process data with AI concurrently
         signals = []
+        process_tasks = []
         if reddit_raw:
-             signals.extend(await self.process_signals(reddit_raw, "Reddit"))
+            process_tasks.append(self.process_signals(reddit_raw, "Reddit"))
         if hn_raw:
-             signals.extend(await self.process_signals(hn_raw, "Hacker News"))
+            process_tasks.append(self.process_signals(hn_raw, "Hacker News"))
+        
+        if process_tasks:
+            processed_results = await asyncio.gather(*process_tasks)
+            for res in processed_results:
+                if res:
+                    signals.extend(res)
              
         # Generate some mock Product Hunt & Google Trends since APIs require keys we might not have
         # A more robust implementation would hook into SerpAPI for Google Trends and PH API

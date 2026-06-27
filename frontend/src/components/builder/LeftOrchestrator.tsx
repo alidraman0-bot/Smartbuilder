@@ -62,7 +62,7 @@ export default function LeftOrchestrator() {
                             placeholder={
                                 isRecovering ? "Auto-fix in progress..." :
                                     isLoading ? "Executing..." :
-                                        `Describe ${buildMode.toLowerCase()} changes...`
+                                        `Describe ${(buildMode || '').toLowerCase()} changes...`
                             }
                             className="w-full h-24 bg-[#18181b] border border-[#27272a] rounded-lg p-3 text-xs text-white placeholder-zinc-600 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/50 resize-none disabled:opacity-50 disabled:cursor-not-allowed"
                         />

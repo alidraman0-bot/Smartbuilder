@@ -2,7 +2,8 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from typing import Optional, List, Dict, Any
 from app.services.deployment_service import deployment_service
-from app.services.mvp_service import mvp_service
+from app.services.mvp_builder_service import MvpBuilderService
+mvp_service = MvpBuilderService()
 
 router = APIRouter()
 

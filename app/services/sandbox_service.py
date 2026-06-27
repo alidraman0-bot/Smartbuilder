@@ -36,7 +36,7 @@ class SandboxService:
         else:
             return await self._create_local_sandbox()
     
-    async def _create_e2b_sandbox(self, template: str = "nextjs") -> str:
+    async def _create_e2b_sandbox(self, template: str = "base") -> str:
         """
         Feature 2: Enhanced Web Sandboxes
         Uses specialized E2B templates for production-grade previews.
@@ -103,7 +103,23 @@ class SandboxService:
 
     async def _start_local_preview(self, sandbox_data: Dict[str, Any]) -> str:
         await asyncio.sleep(0.2)
-        return f"http://localhost:{sandbox_data['port']}"
+        return f"http://localhost:{sandbox_data['port']}/mock-preview"
+
+    def get_hostname_url(self, sandbox_id: str) -> Optional[str]:
+        """Return the preview URL for a sandbox (non-async, for UI updates)"""
+        sandbox_data = self.sandboxes.get(sandbox_id)
+        if not sandbox_data:
+            return None
+        
+        if sandbox_data["type"] == "e2b":
+            try:
+                # Predictive URL based on sandbox instance
+                url = sandbox_data["instance"].get_hostname(port=3000)
+                return f"https://{url}"
+            except:
+                return None
+        else:
+            return f"http://localhost:{sandbox_data.get('port', 3000)}/mock-preview"
     
     async def hot_reload(self, sandbox_id: str, files: List[Dict[str, Any]]):
         """Hot reload preview with new files"""
@@ -135,10 +151,132 @@ class SandboxService:
                 
             # If this is first sync, maybe run install?
             if not sandbox_data["files_synced"]:
-                sandbox.process.start("npm install && npm run dev", background=True)
+                sandbox.process.start("npm install > /tmp/build.log 2>&1 && npm run dev >> /tmp/build.log 2>&1", background=True)
                 sandbox_data["files_synced"] = True
                 
         await loop.run_in_executor(None, write_files)
+
+    async def run_project(self, sandbox_id: str, files: list) -> Dict[str, Any]:
+        """
+        Full project deployment:
+        1. Write all files
+        2. npm install
+        3. npm run dev
+        4. Return preview URL or error logs
+        """
+        sandbox_data = self.sandboxes.get(sandbox_id)
+        if not sandbox_data:
+            raise ValueError(f"Sandbox {sandbox_id} not found")
+
+        # Write files
+        await self.hot_reload(sandbox_id, files)
+
+        if sandbox_data["type"] == "e2b":
+            sandbox = sandbox_data["instance"]
+            loop = asyncio.get_event_loop()
+
+            try:
+                # Prepare Base44 environment variables
+                base44_env = {
+                    "NEXT_PUBLIC_BASE44_APP_ID": os.getenv("BASE44_APP_ID", "demo-app-id"),
+                    "BASE44_API_KEY": os.getenv("BASE44_API_KEY", "demo-api-key"),
+                }
+
+                def install_and_run():
+                    install_result = sandbox.process.start_and_wait("npm install > /tmp/build.log 2>&1", timeout=120)
+                    if install_result.exit_code != 0:
+                        return {"success": False, "error": install_result.stderr, "phase": "install"}
+
+                    # Execute Base44 CLI to push schema and auth configs
+                    logger.info("Base44: Pushing entities and auth schema via CLI")
+                    sandbox.process.start_and_wait("npx base44@latest entities push >> /tmp/build.log 2>&1", env=base44_env)
+                    sandbox.process.start_and_wait("npx base44@latest auth push >> /tmp/build.log 2>&1", env=base44_env)
+                    
+                    # Start dev server in background
+                    sandbox.process.start("npm run dev >> /tmp/build.log 2>&1", env=base44_env, background=True)
+                    return {"success": True}
+
+                result = await loop.run_in_executor(None, install_and_run)
+                
+                if not result["success"]:
+                    return {
+                        "success": False,
+                        "error": result.get("error", "Unknown error"),
+                        "phase": result.get("phase", "unknown"),
+                    }
+
+                # Get preview URL
+                url = sandbox.get_hostname(port=3000)
+                return {
+                    "success": True,
+                    "preview_url": f"https://{url}",
+                }
+
+            except Exception as e:
+                logger.error(f"Run project failed: {e}")
+                return {"success": False, "error": str(e), "phase": "runtime"}
+        else:
+            # Local mock
+            await asyncio.sleep(1)
+            return {
+                "success": True,
+                "preview_url": f"http://localhost:{sandbox_data.get('port', 3000)}/mock-preview",
+            }
+
+    async def restart_project(self, sandbox_id: str) -> Dict[str, Any]:
+        """Phase 6: Restart the running dev server in the sandbox."""
+        sandbox_data = self.sandboxes.get(sandbox_id)
+        if not sandbox_data:
+            return {"success": False, "error": f"Sandbox {sandbox_id} not found locally"}
+
+        if sandbox_data["type"] == "e2b":
+            sandbox = sandbox_data["instance"]
+            loop = asyncio.get_event_loop()
+
+            try:
+                def kill_and_restart():
+                    # Prepare Base44 environment variables
+                    base44_env = {
+                        "NEXT_PUBLIC_BASE44_APP_ID": os.getenv("BASE44_APP_ID", "demo-app-id"),
+                        "BASE44_API_KEY": os.getenv("BASE44_API_KEY", "demo-api-key"),
+                    }
+                    # Kill existing node processes
+                    sandbox.process.start_and_wait("pkill node")
+                    # Restart server
+                    sandbox.process.start("npm run dev >> /tmp/build.log 2>&1", env=base44_env, background=True)
+                    return True
+
+                await loop.run_in_executor(None, kill_and_restart)
+                url = sandbox.get_hostname(port=3000)
+                return {
+                    "success": True,
+                    "preview_url": f"https://{url}"
+                }
+            except Exception as e:
+                logger.error(f"Restart failed: {e}")
+                return {"success": False, "error": str(e)}
+        else:
+            await asyncio.sleep(0.5)
+            return {"success": True, "preview_url": f"http://localhost:{sandbox_data.get('port', 3000)}/mock-preview"}
+
+    async def capture_logs(self, sandbox_id: str) -> str:
+        """Capture stdout/stderr logs from sandbox for error diagnosis."""
+        sandbox_data = self.sandboxes.get(sandbox_id)
+        if not sandbox_data:
+            return "Sandbox not found"
+
+        if sandbox_data["type"] == "e2b":
+            sandbox = sandbox_data["instance"]
+            try:
+                loop = asyncio.get_event_loop()
+                result = await loop.run_in_executor(
+                    None, lambda: sandbox.process.start_and_wait("tail -100 /tmp/build.log 2>&1 || echo 'No logs'", timeout=10)
+                )
+                return result.stdout or result.stderr or "No output"
+            except Exception as e:
+                return f"Log capture failed: {e}"
+        else:
+            return "Local sandbox - no logs available"
 
     async def destroy_sandbox(self, sandbox_id: str):
         """Destroy sandbox and cleanup resources"""

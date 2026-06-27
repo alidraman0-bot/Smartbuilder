@@ -27,6 +27,13 @@ class APIKeysConfig(BaseModel):
     temperature: Optional[float] = Field(None, ge=0.0, le=1.0, description="Temperature (0.0-1.0)")
     max_tokens: Optional[int] = Field(None, ge=1, description="Maximum tokens")
     enable_fallback: Optional[bool] = Field(None, description="Enable fallback providers")
+    
+    # Discovery Keys
+    bright_data_key: Optional[str] = Field(None, description="Bright Data API key")
+    scraperapi_key: Optional[str] = Field(None, description="ScraperAPI key")
+    apify_token: Optional[str] = Field(None, description="Apify API token")
+    diffbot_token: Optional[str] = Field(None, description="Diffbot token")
+    serpapi_key: Optional[str] = Field(None, description="SerpAPI key")
 
 
 class APIKeysStatus(BaseModel):
@@ -44,6 +51,13 @@ class APIKeysStatus(BaseModel):
     max_tokens: int
     enable_fallback: bool
     clients_initialized: list[str]
+    
+    # Discovery Status
+    has_bright_data: bool
+    has_scraperapi: bool
+    has_apify: bool
+    has_diffbot: bool
+    has_serpapi: bool
 
 
 @router.get("/keys/status", response_model=APIKeysStatus)
@@ -69,7 +83,12 @@ async def get_api_keys_status():
             temperature=settings.TEMPERATURE,
             max_tokens=settings.MAX_TOKENS,
             enable_fallback=settings.ENABLE_FALLBACK,
-            clients_initialized=initialized_providers
+            clients_initialized=initialized_providers,
+            has_bright_data=bool(settings.BRIGHT_DATA_API_KEY),
+            has_scraperapi=bool(settings.SCRAPERAPI_API_KEY),
+            has_apify=bool(settings.APIFY_API_TOKEN),
+            has_diffbot=bool(settings.DIFFBOT_TOKEN),
+            has_serpapi=bool(settings.SERPAPI_API_KEY)
         )
     except Exception as e:
         logger.error(f"Error getting API keys status: {e}")
@@ -118,6 +137,18 @@ async def update_api_keys(config: APIKeysConfig):
             env_vars['MAX_TOKENS'] = str(config.max_tokens)
         if config.enable_fallback is not None:
             env_vars['ENABLE_FALLBACK'] = str(config.enable_fallback).lower()
+            
+        # Update Discovery Keys
+        if config.bright_data_key is not None:
+            env_vars['BRIGHT_DATA_API_KEY'] = str(config.bright_data_key)
+        if config.scraperapi_key is not None:
+            env_vars['SCRAPERAPI_API_KEY'] = str(config.scraperapi_key)
+        if config.apify_token is not None:
+            env_vars['APIFY_API_TOKEN'] = str(config.apify_token)
+        if config.diffbot_token is not None:
+            env_vars['DIFFBOT_TOKEN'] = str(config.diffbot_token)
+        if config.serpapi_key is not None:
+            env_vars['SERPAPI_API_KEY'] = str(config.serpapi_key)
         
         # Write back to .env file
         with open(env_file_path, 'w', encoding='utf-8') as f:
@@ -153,7 +184,15 @@ async def update_api_keys(config: APIKeysConfig):
             f.write("# Advanced AI Settings\n")
             f.write(f"TEMPERATURE={env_vars.get('TEMPERATURE', '0.7')}\n")
             f.write(f"MAX_TOKENS={env_vars.get('MAX_TOKENS', '4096')}\n")
-            f.write(f"TOP_P={env_vars.get('TOP_P', '1.0')}\n")
+            f.write(f"TOP_P={env_vars.get('TOP_P', '1.0')}\n\n")
+            
+            # Write Discovery Intelligence section
+            f.write("# Discovery Intelligence (Internet Screening)\n")
+            f.write(f"BRIGHT_DATA_API_KEY={env_vars.get('BRIGHT_DATA_API_KEY', '')}\n")
+            f.write(f"SCRAPERAPI_API_KEY={env_vars.get('SCRAPERAPI_API_KEY', '')}\n")
+            f.write(f"APIFY_API_TOKEN={env_vars.get('APIFY_API_TOKEN', '')}\n")
+            f.write(f"DIFFBOT_TOKEN={env_vars.get('DIFFBOT_TOKEN', '')}\n")
+            f.write(f"SERPAPI_API_KEY={env_vars.get('SERPAPI_API_KEY', '')}\n")
         
         # Reload environment variables (requires server restart for full effect)
         from dotenv import load_dotenv

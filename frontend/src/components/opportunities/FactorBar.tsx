@@ -9,13 +9,14 @@ interface FactorBarProps {
 }
 
 export default function FactorBar({ label, score, color }: FactorBarProps) {
-    const percentage = (score / 10) * 100;
+    const displayScore = typeof score === 'number' ? score : 0;
+    const percentage = (displayScore / 10) * 100;
 
     return (
         <div className="space-y-2">
             <div className="flex justify-between items-end">
                 <span className="text-[10px] font-bold text-gray-400 uppercase tracking-[0.1em]">{label}</span>
-                <span className="text-sm font-black text-white">{score.toFixed(1)}<span className="text-[10px] text-gray-600 font-medium">/10</span></span>
+                <span className="text-sm font-black text-white">{displayScore.toFixed(1)}<span className="text-[10px] text-gray-600 font-medium">/10</span></span>
             </div>
 
             <div className="h-2 w-full bg-[#18181b] border border-[#27272a] rounded-full overflow-hidden relative">

@@ -19,11 +19,11 @@ interface ThinkingStep {
 }
 
 const STEPS: ThinkingStep[] = [
-    { id: 1, label: 'Scanning startup discussions...', icon: <Search className="w-5 h-5" /> },
-    { id: 2, label: 'Analyzing market trends...', icon: <TrendingUp className="w-5 h-5" /> },
-    { id: 3, label: 'Detecting problems founders complain about...', icon: <AlertCircle className="w-5 h-5" /> },
-    { id: 4, label: 'Estimating market potential...', icon: <Target className="w-5 h-5" /> },
-    { id: 5, label: 'Generating opportunities...', icon: <Rocket className="w-5 h-5" /> },
+    { id: 1, label: 'Connecting to Ideation Universe...', icon: <Search className="w-5 h-5" /> },
+    { id: 2, label: 'Sampling high-impact market signals...', icon: <TrendingUp className="w-5 h-5" /> },
+    { id: 3, label: 'Applying combinatorial seeds...', icon: <AlertCircle className="w-5 h-5" /> },
+    { id: 4, label: 'Running global deduplication...', icon: <Target className="w-5 h-5" /> },
+    { id: 5, label: 'Finalizing discovery batch...', icon: <Rocket className="w-5 h-5" /> },
 ];
 
 interface ThinkingPanelProps {
@@ -70,8 +70,8 @@ export default function ThinkingPanel({ onComplete }: ThinkingPanelProps) {
                                     }`}
                             >
                                 <div className={`p-2.5 rounded-xl border transition-colors duration-300 ${isActive ? 'bg-indigo-500/20 border-indigo-500/30 text-indigo-400' :
-                                        isCompleted ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400' :
-                                            'bg-white/5 border-white/5 text-zinc-500'
+                                    isCompleted ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400' :
+                                        'bg-white/5 border-white/5 text-zinc-500'
                                     }`}>
                                     {isCompleted ? <CheckCircle2 className="w-5 h-5" /> : step.icon}
                                 </div>

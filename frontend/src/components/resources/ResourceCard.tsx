@@ -28,13 +28,17 @@ const getColor = (type: string) => {
     }
 };
 
+import { useRunStore } from '@/store/useRunStore';
+
 export const ResourceCard: React.FC<ResourceCardProps> = ({ resource }) => {
     const [isExpanded, setIsExpanded] = useState(false);
     const { applyResource } = useResourceStore();
+    const runId = useRunStore(state => state.runId);
 
     const handleApply = (e: React.MouseEvent) => {
         e.stopPropagation();
-        applyResource(resource.id);
+        // Fallback to "proj-123" if runId is somehow missing/connecting
+        applyResource(resource.id, runId === "CONNECTING..." || !runId ? "proj-123" : runId);
     };
 
     return (

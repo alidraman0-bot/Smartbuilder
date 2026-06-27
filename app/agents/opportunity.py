@@ -5,6 +5,7 @@ from typing import Dict, Any, List
 from app.core.ai_client import get_ai_client
 from app.agents.base import BaseAgent
 from app.models.schemas import OpportunityOutput, StartupIdea
+from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -31,7 +32,7 @@ class OpportunityAgent(BaseAgent):
             ]
 
         prompt = f"""
-        You are an expert Startup Strategist and YC Partner. 
+        You are a world-class Venture Capitalist and Serial Entrepreneur with a track record of identifying $1B+ opportunities.
         Analyze the following market signals and generate exactly 5 high-signal startup opportunities.
         
         Live Signals:
@@ -39,20 +40,26 @@ class OpportunityAgent(BaseAgent):
         
         Optional Market/Theme Constraint: {theme}
         
-        Each idea MUST be a unique, validated opportunity with a clear problem-solution fit. 
-        Reject low-signal or generic ideas.
+        CRITICAL INSTRUCTIONS:
+        1. NO GENERIC IDEAS: Avoid "AI for X", "Uber for Y", or basic SaaS wrappers. 
+        2. REAL-WORLD PAIN: Focus on deep operational inefficiencies, regulatory shifts, supply chain gaps, or high-cost manual processes.
+        3. DEFENSABILITY: Prioritize ideas with high "moats" (proprietary data, network effects, or technical complexity).
+        4. UNMET NEEDS: Look for problems that people are currently solving with messy spreadsheets, expensive consultants, or multiple disconnected tools.
+        5. UNIQUE PERSPECTIVE: Each idea must represent a non-obvious insight derived from the signals.
         
         RETURN ONLY A JSON ARRAY of 5 objects with this structure:
         {{
             "idea_id": "uuid",
             "title": "string",
-            "problem": "string",
-            "target_user": "string",
-            "monetization": "string",
+            "thesis": "A 1-sentence strategic summary of the opportunity",
+            "problem": "Detailed description of the real-world pain point",
+            "solution": "How this leverages technology to solve it uniquely",
+            "target_user": "Specific persona or industry segment",
+            "monetization": "High-value business model (e.g. usage-based, licensing, transaction fee)",
             "confidence_score": 0.0-100.0,
             "market_score": 0.0-100.0,
             "execution_complexity": 0.0-100.0,
-            "reasoning": ["point 1", "point 2"]
+            "reasoning": ["Non-obvious insight 1", "Non-obvious insight 2"]
         }}
         """
 
@@ -61,10 +68,14 @@ class OpportunityAgent(BaseAgent):
                 # Use mock if no AI keys
                 ideas = self._get_mock_ideas()
             else:
+                import random
+                # Inject a dynamic seed to force LLM diversity even with same signals
+                diversity_seed = f"{run_id}-{random.random()}"
+                
                 response = await self.ai_client.chat_completion(
                     messages=[
                         {"role": "system", "content": self._get_system_prompt()},
-                        {"role": "user", "content": prompt}
+                        {"role": "user", "content": f"{prompt}\n\nDiversity Seed: {diversity_seed}"}
                     ],
                     response_format={"type": "json_object"}
                 )
@@ -77,12 +88,12 @@ class OpportunityAgent(BaseAgent):
 
             # Validation: Ensure exactly 5 ideas and correct schema
             # We use Pydantic for validation
-            output = OpportunityOutput(ideas=ideas[:5])
+            output = OpportunityOutput(ideas=list(ideas)[:5])
             
             # If fewer than 5, pad with mocks (unlikely with LLM but for robustness)
             if len(output.ideas) < 5:
                 mocks = self._get_mock_ideas()
-                output.ideas.extend(mocks[:5-len(output.ideas)])
+                output.ideas.extend(list(mocks)[:5-len(output.ideas)])
 
             return output.dict()
 

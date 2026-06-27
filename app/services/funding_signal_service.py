@@ -4,6 +4,8 @@ from typing import List, Dict, Any, Optional
 from app.core.supabase import get_service_client
 from app.core.ai_client import get_ai_client
 from app.core.config import settings
+from app.core.http_client import http_client
+from app.core.retry import retry_request
 import httpx
 
 logger = logging.getLogger(__name__)
@@ -23,17 +25,17 @@ class FundingSignalService:
             search_context = ""
 
             if self.serpapi_key:
-                async with httpx.AsyncClient() as client:
-                    params = {
-                        "q": search_query,
-                        "api_key": self.serpapi_key,
-                        "engine": "google"
-                    }
-                    resp = await client.get("https://serpapi.com/search", params=params)
-                    if resp.status_code == 200:
-                        search_results = resp.json()
-                        organic = search_results.get("organic_results", [])
-                        search_context = "\n".join([f"- {r.get('title')}: {r.get('snippet')}" for r in organic[:8]])
+                client = http_client
+                params = {
+                    "q": search_query,
+                    "api_key": self.serpapi_key,
+                    "engine": "google"
+                }
+                resp = await retry_request(lambda: client.get("https://serpapi.com/search", params=params))
+                if resp.status_code == 200:
+                    search_results = resp.json()
+                    organic = search_results.get("organic_results", [])
+                    search_context = "\n".join([f"- {r.get('title')}: {r.get('snippet')}" for r in organic[:8]])
 
             system_prompt = """You are a venture capital analyst. 
 Based on the provided search results and keywords, estimate the capital flow into this specific market segment over the last 12-24 months.
@@ -42,7 +44,9 @@ Provide:
 2. Number of startups recently funded (integer)
 3. Recent activity score (High, Medium, Low) - based on frequency and size of deals.
 
-Response MUST be a JSON object:
+Response MUST be ONLY a valid JSON object. No markdown. No explanations. No trailing commas.
+
+Schema:
 {
   "total_estimated_funding": "$...",
   "num_startups_funded": 12,
@@ -51,25 +55,54 @@ Response MUST be a JSON object:
 
             user_msg = f"Market Keywords: {', '.join(keywords)}\n\nSearch Context:\n{search_context}"
             
-            response = await self.ai.chat_completion(
+            # Use task-aware AI router for funding analysis
+            response = await self.ai.routed_completion(
+                task="funding_analysis",
                 messages=[{"role": "user", "content": user_msg}],
                 system_prompt=system_prompt,
-                response_format={"type": "json_object"}
+                response_format={"type": "json_object"},
+                max_tokens=1200
             )
             
-            funding_data = json.loads(response['content'])
+            content = response.get('content')
+            if not content:
+                logger.warning("AI returned empty content for funding signals")
+                return {
+                    "total_estimated_funding": "Unknown",
+                    "num_startups_funded": 0,
+                    "recent_activity_score": "Low"
+                }
+
+            from app.utils.json_helper import safe_json_parse
+            funding_data = safe_json_parse(content)
             
             if idea_id:
-                self.supabase.table("funding_signals").insert({
-                    "idea_id": idea_id,
-                    "total_estimated_funding": funding_data.get('total_estimated_funding'),
-                    "num_startups_funded": funding_data.get('num_startups_funded'),
-                    "recent_activity_score": funding_data.get('recent_activity_score')
-                }).execute()
+                try:
+                    # Table may lack UNIQUE constraint — use insert with fallback
+                    self.supabase.table("funding_signals").insert({
+                        "idea_id": idea_id,
+                        "total_estimated_funding": funding_data.get('total_estimated_funding'),
+                        "num_startups_funded": funding_data.get('num_startups_funded'),
+                        "recent_activity_score": funding_data.get('recent_activity_score')
+                    }).execute()
+                except Exception as db_e:
+                    err_str = str(db_e)
+                    if "duplicate" in err_str.lower() or "23505" in err_str:
+                        # Already exists — update the record if possible or skip
+                        try:
+                            self.supabase.table("funding_signals").update({
+                                "total_estimated_funding": funding_data.get('total_estimated_funding'),
+                                "num_startups_funded": funding_data.get('num_startups_funded'),
+                                "recent_activity_score": funding_data.get('recent_activity_score')
+                            }).eq("idea_id", idea_id).execute()
+                        except Exception as update_e:
+                            logger.warning(f"Failed to update funding signals: {update_e}")
+                    else:
+                        logger.error(f"Failed to persist funding signals: {db_e}")
                 
             return funding_data
         except Exception as e:
-            logger.error(f"Error in FundingSignalService: {str(e)}", exc_info=True)
+            logger.error(f"Error in FundingSignalService: {e}")
             return {
                 "total_estimated_funding": "Unknown",
                 "num_startups_funded": 0,

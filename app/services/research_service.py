@@ -22,7 +22,7 @@ class ResearchService:
         Orchestrate deep-dive market research using the Intelligence Engine.
         """
         if not run_id:
-            run_id = f"RES-{uuid.uuid4().hex[:8]}"
+            run_id = str(uuid.uuid4())
 
         # Idempotency check: Return existing report if already generated/running
         if run_id in self.research_store:

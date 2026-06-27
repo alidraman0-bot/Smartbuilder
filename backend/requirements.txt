@@ -1,0 +1,28 @@
+# =============================================================================
+# Smartbuilder Backend — Python Dependencies
+# =============================================================================
+# Install:   pip install -r requirements.txt
+# Run:       uvicorn main:app --host 127.0.0.1 --port 8000 --reload
+# =============================================================================
+
+# --- Core framework ---
+fastapi>=0.115.0
+uvicorn[standard]>=0.30.0
+pydantic>=2.0.0
+python-dotenv>=1.0.0
+httpx>=0.27.0
+
+# --- AI & Agent SDKs ---
+openai>=1.0.0
+e2b>=0.17.1
+
+# --- Utilities ---
+# shelljs-py (removed, does not exist on PyPI)
+uuid
+logging
+supabase>=2.11.0
+pydantic-settings>=2.0.0
+
+# --- Production Infrastructure (optional — system degrades gracefully without them) ---
+redis>=5.0.0     # AI cache layer (falls back to in-memory without Redis)
+# celery>=5.4.0  # Uncomment for production queue workers

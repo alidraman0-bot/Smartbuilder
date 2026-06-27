@@ -36,7 +36,7 @@ class FSMService:
         if user_id:
             try:
                 service = StartupService()
-                project_data = ProjectCreate(startup_name=opportunity[:50]) # Use opportunity as name for now
+                project_data = ProjectCreate(startup_name=str(opportunity)[:50]) # Use opportunity as name for now
                 project = service.create_project(user_id=user_id, project_data=project_data)
                 if project:
                     self.orchestrator.project_id = str(project.id)

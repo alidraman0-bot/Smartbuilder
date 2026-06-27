@@ -5,7 +5,7 @@ import uuid
 # ==================== AGENT CONTRACT SCHEMAS ====================
 
 class StartupIdea(BaseModel):
-    idea_id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    idea_id: uuid.UUID = Field(default_factory=uuid.uuid4)
     title: str
     problem: str
     target_user: str
@@ -98,8 +98,8 @@ class DeploymentOutput(BaseModel):
 # ==================== EXISTING SCHEMAS (LEGACY/UI SUPPORT) ====================
 
 class ViabilityScore(BaseModel):
-    score: conint(ge=0, le=100) = Field(..., description="0-100 score representing business viability")
-    confidence: conint(ge=0, le=100) = Field(..., description="Confidence in the assessment")
+    score: int = Field(..., ge=0, le=100, description="0-100 score representing business viability")
+    confidence: int = Field(..., ge=0, le=100, description="Confidence in the assessment")
     reasoning: List[str] = Field(..., description="List of reasons for the score")
 
 class BusinessPlan(BaseModel):

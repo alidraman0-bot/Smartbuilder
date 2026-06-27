@@ -58,24 +58,7 @@ export default function IdeaDetailsPanel({ idea, onClose }: IdeaDetailsPanelProp
 
     const handlePromote = async () => {
         setIsPromoting(true);
-        try {
-            const response = await fetch('/api/v1/ideas/promote', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ idea_id: idea.idea_id })
-            });
-            if (response.ok) {
-                router.push('/research');
-            } else {
-                const errorData = await response.json().catch(() => ({ detail: 'Unknown error' }));
-                alert(`Failed to promote idea: ${errorData.detail}`);
-                setIsPromoting(false);
-            }
-        } catch (e) {
-            console.error(e);
-            alert("Failed to promote idea.");
-            setIsPromoting(false);
-        }
+        router.push(`/research?ideaId=${idea.idea_id}&autoRun=true`);
     };
 
     return (

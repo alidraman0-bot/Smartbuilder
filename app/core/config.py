@@ -3,24 +3,28 @@ from typing import Optional
 
 class Settings(BaseSettings):
     # AI Provider
-    AI_PROVIDER: str = "deepseek"
+    AI_PROVIDER: str = "openai"
     ENABLE_FALLBACK: bool = True
-    FALLBACK_PROVIDERS_LIST: list[str] = ["deepseek", "openai", "anthropic", "gemini"]
+    ENABLE_AI_MOCK: bool = True
+    FALLBACK_PROVIDERS_LIST: list[str] = ["openai", "google", "anthropic", "deepseek"]
 
     # OpenAI
     OPENAI_API_KEY: Optional[str] = None
-    OPENAI_MODEL: str = "gpt-4o"
+    OPENAI_MODEL: str = "gpt-4.1"
+    OPENAI_MINI_MODEL: str = "gpt-4.1-mini"
     # Backwards compatibility for MODEL_NAME
-    MODEL_NAME: str = "gpt-4-turbo-preview"
+    MODEL_NAME: str = "gpt-4.1-mini"
     OPENAI_BASE_URL: Optional[str] = None
 
     # Anthropic
     ANTHROPIC_API_KEY: Optional[str] = None
-    ANTHROPIC_MODEL: str = "claude-3-5-sonnet-20241022"
+    ANTHROPIC_MODEL: str = "claude-sonnet-4-20250514"
 
-    # Google
+    # Google Gemini
     GOOGLE_API_KEY: Optional[str] = None
-    GEMINI_MODEL: str = "gemini-1.5-pro"
+    GEMINI_API_KEY: Optional[str] = None
+    GEMINI_MODEL: str = "gemini-2.5-pro"
+    GEMINI_FLASH_MODEL: str = "gemini-2.5-flash"
 
     # Deepseek
     DEEPSEEK_API_KEY: Optional[str] = None
@@ -34,7 +38,14 @@ class Settings(BaseSettings):
 
     # External APIs
     SERPAPI_API_KEY: Optional[str] = None
+    BRIGHT_DATA_API_KEY: Optional[str] = None
+    SCRAPERAPI_API_KEY: Optional[str] = None
+    APIFY_API_TOKEN: Optional[str] = None
+    DIFFBOT_TOKEN: Optional[str] = None
+    VISUALPING_API_KEY: Optional[str] = None
     TESTSPRITE_API_KEY: Optional[str] = None
+    E2B_API_KEY: Optional[str] = None
+    BASE44_API_KEY: Optional[str] = None
     
     # Reddit
     REDDIT_CLIENT_ID: Optional[str] = None
@@ -44,7 +55,7 @@ class Settings(BaseSettings):
     # RSS Feeds
     PRODUCT_HUNT_RSS_URL: str = "https://www.producthunt.com/feed"
     INDIE_HACKERS_RSS_URL: str = "https://www.indiehackers.com/feed"
-    
+
     # Supabase
     SUPABASE_URL: Optional[str] = None
     SUPABASE_KEY: Optional[str] = None
@@ -60,6 +71,7 @@ class Settings(BaseSettings):
             self.OPENAI_API_KEY, 
             self.ANTHROPIC_API_KEY, 
             self.GOOGLE_API_KEY,
+            self.GEMINI_API_KEY,
             self.DEEPSEEK_API_KEY,
             self.TESTSPRITE_API_KEY
         ])

@@ -67,9 +67,9 @@ export default function BuildExecuting() {
                         {executionTimeline.map((event, idx) => (
                             <div key={idx} className="flex space-x-3 animate-slide-up">
                                 <div className="flex flex-col items-center">
-                                    <div className={`w-2 h-2 rounded-full mt-1.5 ${event.type === 'success' ? 'bg-emerald-500' :
-                                            event.type === 'error' ? 'bg-red-500' :
-                                                event.type === 'warning' ? 'bg-amber-500' :
+                                    <div className={`w-2 h-2 rounded-full mt-1.5 ${(event.type ?? 'info') === 'success' ? 'bg-emerald-500' :
+                                            (event.type ?? 'info') === 'error' ? 'bg-red-500' :
+                                                (event.type ?? 'info') === 'warning' ? 'bg-amber-500' :
                                                     'bg-blue-500'
                                         }`} />
                                     {idx !== executionTimeline.length - 1 && (
@@ -78,11 +78,11 @@ export default function BuildExecuting() {
                                 </div>
                                 <div className="flex-1 pb-2">
                                     <div className="flex items-center justify-between mb-1">
-                                        <span className={`text-xs font-semibold ${event.type === 'success' ? 'text-emerald-400' :
-                                                event.type === 'error' ? 'text-red-400' :
+                                        <span className={`text-xs font-semibold ${(event.type ?? 'info') === 'success' ? 'text-emerald-400' :
+                                                (event.type ?? 'info') === 'error' ? 'text-red-400' :
                                                     'text-blue-400'
                                             }`}>
-                                            {event.type.toUpperCase()}
+                                            {(event.type ?? 'info').toUpperCase()}
                                         </span>
                                         <span className="text-[10px] font-mono text-zinc-600">
                                             {event.timestamp}

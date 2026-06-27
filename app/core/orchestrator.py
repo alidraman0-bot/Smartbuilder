@@ -258,13 +258,16 @@ class Orchestrator:
 
         research_data = self.context.get("research")
         # Add "idea" if available in research_data
-        research_ui = {**(research_data or {})}
+        if isinstance(research_data, dict):
+            research_ui = {**research_data}
+        else:
+            research_ui = {"summary": str(research_data) if research_data else "No research data available"}
         
         modules = []
         # If the research_data already has structured modules from ResearchService, use them
         if research_data and "modules" in research_data:
             modules = research_data["modules"]
-        elif research_data:
+        elif isinstance(research_data, dict):
             # Fallback to legacy mapping if ResearchService didn't provide modules
             modules = [
                 {
@@ -278,20 +281,28 @@ class Orchestrator:
             ]
             
         research_ui["modules"] = modules
-        if self.context.get("idea"):
+        if isinstance(self.context.get("idea"), dict):
             research_ui["idea"] = self.context.get("idea")
+        elif self.context.get("idea"):
+             research_ui["idea"] = {"title": str(self.context.get("idea"))}
+
+        final_confidence = 0.0
+        try:
+            final_confidence = round(float(self.calculate_final_confidence()), 1)
+        except (ValueError, TypeError):
+            final_confidence = 0.0
 
         return jsonable_encoder({
             "runId": self.run_id,
             "state": self.state.name,
-            "confidence": round(self.calculate_final_confidence(), 1),
+            "confidence": final_confidence,
             "status": "FAILED" if self.state == SystemState.FAILED else ("COMPLETED" if self.state == SystemState.COMPLETED else "ACTIVE"),
             "health": "NOMINAL" if self.state != SystemState.FAILED else "CRITICAL",
             "elapsed": f"{int(time.time() - self.start_time)}s",
             "logs": self.logs[-50:],
             "pipeline": pipeline,
             "research": research_ui,
-            "business_plan": self.context.get("business_plan_prd", {}).get("business_plan"),
-            "prd": self.context.get("business_plan_prd", {}).get("prd"),
+            "business_plan": self.context.get("business_plan_prd", {}).get("business_plan") if isinstance(self.context.get("business_plan_prd"), dict) else None,
+            "prd": self.context.get("business_plan_prd", {}).get("prd") if isinstance(self.context.get("business_plan_prd"), dict) else None,
             "history": [r.dict() for r in self.history]
         })

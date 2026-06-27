@@ -10,6 +10,8 @@ import React, { useState, useEffect } from 'react';
 import MonacoEditor from '@/components/editor/MonacoEditor';
 import { Folder, File, ChevronRight, ChevronDown, Monitor, Cpu, Database, Save, ArrowLeft } from 'lucide-react';
 import Link from 'next/link';
+import { apiFetch } from '@/lib/apiClient';
+import { getAuthHeaders } from '@/utils/supabase/auth';
 
 interface FileNode {
     name: string;
@@ -34,8 +36,8 @@ export default function EditorPage() {
 
     const fetchFiles = async (path: string) => {
         try {
-            const response = await fetch(`/api/v1/editor/files?path=${path}`);
-            const data = await response.json();
+            const headers = await getAuthHeaders();
+            const data = await apiFetch<FileNode[]>(`/api/v1/editor/files?path=${path}`, { headers });
             setFiles(data);
         } catch (err) {
             console.error('Error fetching files:', err);
@@ -45,8 +47,8 @@ export default function EditorPage() {
     const loadFile = async (path: string) => {
         setLoading(true);
         try {
-            const response = await fetch(`/api/v1/editor/file/content?path=${path}`);
-            const data = await response.json();
+            const headers = await getAuthHeaders();
+            const data = await apiFetch<{content: string}>(`/api/v1/editor/file/content?path=${path}`, { headers });
             setFileContent(data.content);
             setCurrentFile(path);
         } catch (err) {

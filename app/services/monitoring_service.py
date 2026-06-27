@@ -327,4 +327,4 @@ monitoring_service = MonitoringService()
 
 def uuid_hex():
     import uuid
-    return uuid.uuid4().hex[:8]
+    return str(uuid.uuid4().hex)[:8]

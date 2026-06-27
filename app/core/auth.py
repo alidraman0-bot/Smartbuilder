@@ -9,16 +9,24 @@ async def verify_supabase_token(token: str) -> dict:
     """
     Verifies the Supabase JWT token and returns user data as a dictionary.
     """
-    import asyncio
+    from app.core.supabase import get_async_supabase
+    from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception
     
     try:
         logger.info(f"Verifying token: {token[:10]}...")
+        client = await get_async_supabase()
         
-        # Wrap synchronous Supabase call in asyncio.to_thread to avoid blocking
-        def _get_user():
-            return supabase.auth.get_user(token)
-        
-        user = await asyncio.to_thread(_get_user)
+        # Add retry mechanism for transient connection errors (HTTP/2 issues on Windows)
+        @retry(
+            stop=stop_after_attempt(3),
+            wait=wait_exponential(multiplier=1, min=2, max=10),
+            retry=retry_if_exception(lambda e: any(x in str(e).lower() for x in ["connectionterminated", "last_stream_id", "timeout", "timed out", "handshake"])),
+            reraise=True
+        )
+        async def _get_user_with_retry():
+            return await client.auth.get_user(token)
+            
+        user = await _get_user_with_retry()
         
         if not user or not user.user:
              logger.warning(f"Supabase auth returned no user for token starts with: {token[:10]}...")

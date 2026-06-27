@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { getAuthHeaders } from '@/utils/supabase/auth';
+import { apiFetch } from '@/lib/apiClient';
 
 interface PreferenceState {
     preferences: Record<string, any>;
@@ -19,11 +20,9 @@ export const usePreferenceStore = create<PreferenceState>((set, get) => ({
         set({ loading: true, error: null });
         try {
             const headers = await getAuthHeaders();
-            const response = await fetch('/api/v1/preferences/', {
+            const data = await apiFetch<any>('/api/v1/preferences/', {
                 headers
             });
-            if (!response.ok) throw new Error('Failed to fetch preferences');
-            const data = await response.json();
             set({ preferences: data, loading: false });
         } catch (error: any) {
             set({ error: error.message, loading: false });
@@ -33,12 +32,10 @@ export const usePreferenceStore = create<PreferenceState>((set, get) => ({
     updatePreference: async (key: string, value: any) => {
         try {
             const headers = await getAuthHeaders();
-            const response = await fetch(`/api/v1/preferences/${key}?value=${JSON.stringify(value)}`, {
+            const data = await apiFetch<any>(`/api/v1/preferences/${key}?value=${JSON.stringify(value)}`, {
                 method: 'POST',
                 headers
             });
-            if (!response.ok) throw new Error('Failed to update preference');
-            const data = await response.json();
             set((state) => ({
                 preferences: { ...state.preferences, [key]: data.value },
             }));
@@ -51,12 +48,11 @@ export const usePreferenceStore = create<PreferenceState>((set, get) => ({
         set({ loading: true });
         try {
             const headers = await getAuthHeaders();
-            const response = await fetch('/api/v1/preferences/update', {
+            await apiFetch('/api/v1/preferences/update', {
                 method: 'POST',
                 headers,
                 body: JSON.stringify({ preferences: updates }),
             });
-            if (!response.ok) throw new Error('Failed to update preferences');
 
             set((state) => ({
                 preferences: { ...state.preferences, ...updates },

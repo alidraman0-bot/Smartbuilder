@@ -4,14 +4,15 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { Search, Bell, ChevronDown, Command, Settings, User, LogOut, Sparkles, Activity, CreditCard, Zap } from 'lucide-react';
 import { useRunStore } from '@/store/useRunStore';
-import { createClient } from '@/utils/supabase/client';
+import { createClient } from '@/lib/supabase/browser';
+import { useBillingStore } from '@/store/useBillingStore';
 
 export default function TopBar() {
     const [searchFocused, setSearchFocused] = useState(false);
     const [profileOpen, setProfileOpen] = useState(false);
     const [user, setUser] = useState<any>(null);
-    const [subscription, setSubscription] = useState<any>(null);
-    const [loading, setLoading] = useState(true);
+    const { subscription, loading: billingLoading, fetchSubscription } = useBillingStore();
+    const [loadingUser, setLoadingUser] = useState(true); // Renamed to avoid conflict
     const profileRef = useRef<HTMLDivElement>(null);
     const notifications = 3; // Mock notification count
     const router = useRouter();
@@ -21,79 +22,11 @@ export default function TopBar() {
         const getUserData = async () => {
             const { data: { user } } = await supabase.auth.getUser();
             setUser(user);
-
-            if (user) {
-                try {
-                    // 1. Try finding org where user is a member (org_members)
-                    let { data: orgMember } = await supabase
-                        .from('org_members')
-                        .select('org_id')
-                        .eq('user_id', user.id)
-                        .maybeSingle();
-
-                    let org_id = orgMember?.org_id;
-
-                    // 2. Try legacy team_members if not found
-                    if (!org_id) {
-                        const { data: teamMember } = await supabase
-                            .from('team_members')
-                            .select('org_id')
-                            .eq('user_id', user.id)
-                            .maybeSingle();
-                        org_id = teamMember?.org_id;
-                    }
-
-                    // 3. Check if user is an owner of any organization
-                    if (!org_id) {
-                        const { data: ownedOrg } = await supabase
-                            .from('organizations')
-                            .select('id')
-                            .eq('owner_id', user.id)
-                            .limit(1)
-                            .maybeSingle();
-                        org_id = ownedOrg?.id;
-                    }
-
-                    if (!org_id) {
-                        // 4. Frictionless Fallback: Auto-provision a default org
-                        try {
-                            const { data: { session } } = await supabase.auth.getSession();
-                            const res = await fetch('/api/v1/billing/provision', {
-                                headers: {
-                                    'Authorization': `Bearer ${session?.access_token}`
-                                }
-                            });
-                            if (res.ok) {
-                                const data = await res.json();
-                                org_id = data.org_id;
-                                console.info('Auto-provisioned default organization');
-                            }
-                        } catch (err) {
-                            console.error('Failed to auto-provision organization:', err);
-                        }
-                    }
-
-                    if (org_id) {
-                        // 2. Fetch subscription
-                        const { data: { session } } = await supabase.auth.getSession();
-                        const response = await fetch(`/api/v1/billing/subscription?org_id=${org_id}`, {
-                            headers: {
-                                'Authorization': `Bearer ${session?.access_token}`
-                            }
-                        });
-                        if (response.ok) {
-                            const subData = await response.json();
-                            setSubscription(subData);
-                        }
-                    }
-                } catch (err) {
-                    console.error('Error fetching billing info:', err);
-                }
-            }
-            setLoading(false);
+            setLoadingUser(false); // Use the renamed state
         };
         getUserData();
-    }, []);
+        fetchSubscription();
+    }, [fetchSubscription]);
 
     const handleSignOut = async () => {
         await supabase.auth.signOut();
@@ -189,17 +122,9 @@ export default function TopBar() {
                     >
                         <div className="flex flex-col items-end">
                             <div className="flex items-center space-x-2">
-                                <span className="text-sm font-bold text-white tracking-tight">{loading ? '...' : displayName}</span>
+                                <span className="text-sm font-bold text-white tracking-tight">{loadingUser ? '...' : displayName}</span>
                                 <Sparkles size={12} className="text-indigo-400" />
-                                {!loading && subscription?.plan && (
-                                    <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-md border ${subscription.plan === 'starter' ? 'bg-zinc-800 border-zinc-700 text-zinc-400' :
-                                        subscription.plan === 'pro' ? 'bg-indigo-500/10 border-indigo-500/30 text-indigo-400' :
-                                            subscription.plan === 'team' ? 'bg-purple-500/10 border-purple-500/30 text-purple-400' :
-                                                'bg-pink-500/10 border-pink-500/30 text-pink-400'
-                                        } uppercase tracking-wider`}>
-                                        {subscription.plan}
-                                    </span>
-                                )}
+
                             </div>
                             <span className="text-[10px] font-mono font-semibold text-indigo-400/80 uppercase">{displayRole}</span>
                         </div>
@@ -242,13 +167,7 @@ export default function TopBar() {
                                     <User size={16} className="text-zinc-400" />
                                     <span>Profile Settings</span>
                                 </button>
-                                <button
-                                    onClick={() => { setProfileOpen(false); router.push('/billing'); }}
-                                    className="w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-sm text-zinc-300 hover:text-white hover:bg-white/5 transition-all duration-200"
-                                >
-                                    <CreditCard size={16} className="text-zinc-400" />
-                                    <span>Billing & Plan</span>
-                                </button>
+
                                 <div className="h-px bg-white/5 my-1" />
                                 <button
                                     onClick={handleSignOut}

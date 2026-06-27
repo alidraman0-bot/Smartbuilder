@@ -89,24 +89,8 @@ const PLAN_FEATURES: Record<string, PlanFeatures> = {
  * Check if a plan has access to a feature
  */
 export function hasFeature(plan: string, feature: FeatureKey): boolean {
-    const planFeatures = PLAN_FEATURES[plan.toLowerCase()];
-    if (!planFeatures) {
-        return false;
-    }
-
-    const featureValue = planFeatures[feature as keyof PlanFeatures];
-
-    // Handle boolean features
-    if (typeof featureValue === 'boolean') {
-        return featureValue;
-    }
-
-    // Handle numeric limits (-1 means unlimited, 0 means locked)
-    if (typeof featureValue === 'number') {
-        return featureValue !== 0;
-    }
-
-    return false;
+    // Payment system disabled - allow all features
+    return true;
 }
 
 /**
@@ -148,7 +132,8 @@ export function getRecommendedPlan(feature: FeatureKey): string {
 /**
  * Get feature limit for numeric features
  */
-export function getFeatureLimit(plan: string, feature: keyof PlanFeatures): number {
+export function getFeatureLimit(plan: string | undefined | null, feature: keyof PlanFeatures): number {
+    if (!plan) return 0;
     const planFeatures = PLAN_FEATURES[plan.toLowerCase()];
     if (!planFeatures) {
         return 0;
@@ -183,7 +168,8 @@ export function isWithinLimit(
 /**
  * Get all features for a plan
  */
-export function getPlanFeatures(plan: string): PlanFeatures {
+export function getPlanFeatures(plan: string | undefined | null): PlanFeatures {
+    if (!plan) return PLAN_FEATURES.starter;
     return PLAN_FEATURES[plan.toLowerCase()] || PLAN_FEATURES.starter;
 }
 
@@ -194,19 +180,6 @@ export async function checkFeatureAccess(
     orgId: string,
     feature: FeatureKey
 ): Promise<boolean> {
-    try {
-        const response = await fetch(
-            `/api/v1/billing/check-feature?org_id=${orgId}&feature=${feature}`
-        );
-
-        if (!response.ok) {
-            return false;
-        }
-
-        const data = await response.json();
-        return data.has_access || false;
-    } catch (error) {
-        console.error('Error checking feature access:', error);
-        return false;
-    }
+    // Payment system disabled - allow all features
+    return true;
 }

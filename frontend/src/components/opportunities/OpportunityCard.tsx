@@ -37,6 +37,9 @@ interface ScoreData {
 }
 
 export interface OpportunityIdea {
+    id: string;
+    market_size: string | undefined;
+    monetization: string;
     title: string;
     problem: string;
     target_customer: string;
@@ -48,11 +51,15 @@ export interface OpportunityIdea {
 interface OpportunityCardProps {
     idea: OpportunityIdea;
     onResearch: () => void;
+    onClick?: () => void;
 }
 
-export default function OpportunityCard({ idea, onResearch }: OpportunityCardProps) {
+export default function OpportunityCard({ idea, onResearch, onClick }: OpportunityCardProps) {
     return (
-        <div className="group relative bg-[#0A0A0A] border border-white/10 rounded-3xl p-8 hover:border-indigo-500/50 transition-all duration-300 backdrop-blur-xl overflow-hidden shadow-2xl">
+        <div
+            onClick={onClick}
+            className="group relative bg-[#0A0A0A] border border-white/10 rounded-3xl p-8 hover:border-indigo-500/50 transition-all duration-300 backdrop-blur-xl overflow-hidden shadow-2xl cursor-pointer"
+        >
             {/* Background Accent */}
             <div className="absolute top-0 right-0 w-32 h-32 bg-indigo-500/5 rounded-full blur-3xl group-hover:bg-indigo-500/10 transition-colors" />
 
@@ -140,7 +147,10 @@ export default function OpportunityCard({ idea, onResearch }: OpportunityCardPro
                 )}
 
                 <button
-                    onClick={onResearch}
+                    onClick={(e) => {
+                        e.stopPropagation();
+                        onResearch();
+                    }}
                     className="w-full inline-flex items-center justify-center px-6 py-4 bg-white/5 hover:bg-white/10 border border-white/10 hover:border-indigo-500/50 text-white text-sm font-bold rounded-2xl transition-all group-hover:shadow-[0_0_30px_-10px_rgba(79,70,229,0.3)] active:scale-[0.98]"
                 >
                     <span>Research This Opportunity</span>

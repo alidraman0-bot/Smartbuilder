@@ -1,6 +1,6 @@
 import os
 import logging
-from supabase import create_client, Client
+from supabase import create_client, Client, create_async_client, AsyncClient
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)
@@ -15,8 +15,9 @@ if not url or not key:
 # Public/Anon Client (Respects RLS)
 supabase: Client = create_client(url, key)
 
-# Service Role Client (Bypasses RLS - Use with caution)
-service_client: Client = None
+# Async Clients
+async_client: AsyncClient = None
+async_service_client: AsyncClient = None
 
 if service_role_key:
     try:
@@ -34,7 +35,24 @@ def get_supabase() -> Client:
     return supabase
 
 def get_service_client() -> Client:
-    if service_client:
-        return service_client
-    logger.warning("Service client requested but not available. Falling back to anon client (may fail RLS).")
-    return supabase
+    """Return the global Supabase service role client."""
+    if service_client is None:
+        # Fallback to anon client if service client not initialized
+        logger.warning(f"Returning ANON client instead of service role client!")
+        return supabase
+    return service_client
+
+async def get_async_supabase() -> AsyncClient:
+    global async_client
+    if async_client is None:
+        async_client = await create_async_client(url, key)
+    return async_client
+
+async def get_async_service_client() -> AsyncClient:
+    global async_service_client
+    if async_service_client is None:
+        if service_role_key:
+            async_service_client = await create_async_client(url, service_role_key)
+        else:
+            async_service_client = await get_async_supabase()
+    return async_service_client

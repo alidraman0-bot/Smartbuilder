@@ -1,360 +1,341 @@
 /**
- * MVP Builder Store
+ * MVP Builder Store — Zustand state management for the autonomous build pipeline.
  * 
- * Manages the complete state of the MVP Builder including:
- * - 7 UI states (S0-S6)
- * - Build sessions and iterations
- * - Execution timeline and logs
- * - Auto-fix state
- * - Preview management
+ * Manages:
+ * - Session lifecycle (create, poll, improve)
+ * - 8-step pipeline progress tracking
+ * - Generated files, preview URL, timeline
  */
 
 import { create } from 'zustand';
+import { apiFetch } from '@/lib/apiClient';
 import { getAuthHeaders } from '@/utils/supabase/auth';
 
-export type BuilderState = 'S0' | 'S1' | 'S2' | 'S3' | 'S4' | 'S5' | 'S6';
-export type BuildMode = 'UI' | 'Logic' | 'Data';
-export type PreviewStatus = 'loading' | 'ready' | 'error' | 'paused';
+// ============================================================================
+// Types
+// ============================================================================
+
+export interface PipelineStep {
+  step: string;
+  label: string;
+  status: 'pending' | 'active' | 'completed' | 'failed' | 'skipped';
+  data?: Record<string, unknown>;
+}
 
 export interface TimelineEvent {
-    timestamp: string;
-    message: string;
-    type: 'info' | 'success' | 'warning' | 'error';
+  message: string;
+  event_type: string;
+  timestamp: string;
+  // Alias for event_type to simplify UI usage
+  type?: string;
 }
 
-export interface FileNode {
-    path: string;
-    content: string;
-    type: string;
+export interface GeneratedFile {
+  path: string;
+  content: string;
+  language?: string;
+  description?: string;
+  type?: string;
 }
 
-export interface ErrorInfo {
-    message: string;
-    category: string;
-    file: string | null;
+export interface BuildSession {
+  session_id: string;
+  run_id: string;
+  state: string;
+  project_name: string;
+  preview_url: string | null;
+  sandbox_id: string | null;
+  files_count: number;
+  pipeline_steps: PipelineStep[];
+  timeline: TimelineEvent[];
+  last_error: { message: string; category: string } | null;
+  build_version: number;
+  plan: Record<string, unknown> | null;
+  architecture: Record<string, unknown> | null;
+  scaffold: Record<string, unknown> | null;
+  created_at: string;
+  updated_at: string;
 }
 
-interface MvpBuilderState {
-    // Current state
-    uiState: BuilderState;
-    sessionId: string | null;
+export interface MvpBuilderState {
+  // Session
+  sessionId: string | null;
+  session: BuildSession | null;
+  projectName: string;
 
-    // Build data
-    buildMode: BuildMode;
-    projectName: string;
-    buildVersion: number;
-    prdSnapshot: any | null;
-    researchSnapshot: any | null;
+  // Pipeline
+  pipelineSteps: PipelineStep[];
+  currentStepIndex: number;
+  executionTimeline: TimelineEvent[];
 
-    // Execution tracking
-    executionTimeline: TimelineEvent[];
-    currentFiles: FileNode[];
-    buildLogs: any[];
+  // Files
+  files: GeneratedFile[];
+  currentFiles: GeneratedFile[];
+  filesCount: number;
 
-    // Auto-fix state
-    autoFixAttempts: number;
-    maxAutoFixAttempts: number;
-    lastError: ErrorInfo | null;
-    canRevert: boolean;
+  // UI state
+  isBuilding: boolean;
+  isLoading: boolean; // alias for UI loading state
+  buildVersion: number; // build version from backend
+  error: string | null;
+  idea: string;
+  // New UI fields
+  previewUrl: string;
+  previewStatus: string;
+  uiState: string;
+  buildMode: string;
+  autoFixAttempts: number;
 
-    // Preview
-    previewUrl: string | null;
-    previewStatus: PreviewStatus;
-
-    // Loading states
-    isLoading: boolean;
-
-    // Actions
-    createSession: (runId: string, prd: any, research?: any, idea?: string) => Promise<void>;
-    fetchSessionState: (sessionId: string) => Promise<void>;
-    submitIdea: (idea: string, runId?: string) => Promise<void>;
-    iterate: (prompt: string, buildMode?: BuildMode) => Promise<void>;
-    freeze: () => Promise<void>;
-    revert: () => Promise<void>;
-    setBuildMode: (mode: BuildMode) => void;
-    reset: () => void;
-    startStatePolling: () => void;
+  // Actions
+  setIdea: (idea: string) => void;
+  setBuildVersion: (v: number) => void;
+  setBuildMode: (mode: string) => void;
+  setAutoFixAttempts: (count: number) => void;
+  buildMVP: (idea: string) => Promise<void>;
+  submitIdea: (idea: string, runId?: string) => Promise<void>; // alias for buildMVP
+  improveMVP: (instruction: string) => Promise<void>;
+  iterate: (prompt: string) => Promise<void>;
+  pollState: () => Promise<void>;
+  stopPolling: () => void;
+  fetchFiles: () => Promise<void>;
+  freezeBuild: () => Promise<void>;
+  freeze: () => Promise<void>; // alias for freezeBuild
+  revertBuild: () => Promise<void>;
+  reset: () => void;
 }
 
-const initialState = {
-    uiState: 'S0' as BuilderState,
-    sessionId: null,
-    buildMode: 'UI' as BuildMode,
-    projectName: '',
-    buildVersion: 1,
-    prdSnapshot: null,
-    researchSnapshot: null,
-    executionTimeline: [],
-    currentFiles: [],
-    buildLogs: [],
-    autoFixAttempts: 0,
-    maxAutoFixAttempts: 3,
-    lastError: null,
-    canRevert: false,
-    previewUrl: null,
-    previewStatus: 'loading' as PreviewStatus,
-    isLoading: false,
-};
+// Exported helper types for UI components
+export type BuildMode = string;
+export type BuilderState = MvpBuilderState;
+
+// Default pipeline steps
+const DEFAULT_STEPS: PipelineStep[] = [
+  { step: 'analyze',  label: 'Analyzing Idea',         status: 'pending' },
+  { step: 'design',   label: 'Designing Architecture', status: 'pending' },
+  { step: 'generate', label: 'Generating Code',        status: 'pending' },
+  { step: 'scaffold', label: 'Scaffolding Project',    status: 'pending' },
+  { step: 'optimize', label: 'Optimizing',             status: 'pending' },
+  { step: 'deploy',   label: 'Deploying',              status: 'pending' },
+  { step: 'verify',   label: 'Verifying',              status: 'pending' },
+  { step: 'finalize', label: 'Finalizing',             status: 'pending' },
+];
+
+let pollInterval: ReturnType<typeof setInterval> | null = null;
+
+// ============================================================================
+// Store
+// ============================================================================
 
 export const useMvpBuilderStore = create<MvpBuilderState>((set, get) => ({
-    ...initialState,
+  sessionId: null,
+  session: null,
+  projectName: '',
+  pipelineSteps: [...DEFAULT_STEPS],
+  currentStepIndex: -1,
+  executionTimeline: [],
+  files: [],
+  currentFiles: [],
+  filesCount: 0,
+  isBuilding: false,
+  isLoading: false,
+  buildVersion: 0,
+  error: null,
+  idea: '',
+  // UI fields
+  previewUrl: '',
+  previewStatus: '',
+  uiState: '',
+  buildMode: '',
+  autoFixAttempts: 0,
 
-    createSession: async (runId: string, prd: any, research?: any, idea?: string) => {
-        set({ isLoading: true });
+  setIdea: (idea: string) => set({ idea }),
+  setBuildVersion: (v: number) => set({ buildVersion: v }),
+  setBuildMode: (mode: string) => set({ buildMode: mode }),
+  setAutoFixAttempts: (count: number) => set({ autoFixAttempts: count }),
 
-        try {
-            const headers = await getAuthHeaders();
-            const response = await fetch('/api/v1/mvp-builder/init', {
-                method: 'POST',
-                headers,
-                body: JSON.stringify({ run_id: runId, prd, research, idea })
-            });
+  buildMVP: async (idea: string) => {
+    set({ isBuilding: true, isLoading: true, error: null, idea, pipelineSteps: [...DEFAULT_STEPS], currentStepIndex: 0, files: [], currentFiles: [], filesCount: 0 });
 
-            if (!response.ok) {
-                throw new Error('Failed to create session');
-            }
+    try {
+      const headers = await getAuthHeaders();
+      const data = await apiFetch<any>(`/api/v1/mvp-builder/build`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ idea }),
+      });
 
-            const data = await response.json();
+      set({
+        sessionId: data.session_id,
+        pipelineSteps: data.pipeline_steps || [...DEFAULT_STEPS],
+      });
 
-            set({
-                sessionId: data.session_id,
-                uiState: data.state as BuilderState,
-                prdSnapshot: prd || { title: 'New Project', summary: idea },
-                researchSnapshot: research || null,
-                projectName: prd?.title || 'New Project',
-                isLoading: false
-            });
+      // Start polling for progress
+      get().stopPolling();
+      pollInterval = setInterval(() => {
+        get().pollState();
+      }, 2000);
 
-            // If we started with an idea, we might have transitioned straight to S2
-            if (data.state !== 'S0' && data.state !== 'S1') {
-                get().startStatePolling();
-            }
-
-        } catch (error) {
-            console.error('Error creating session:', error);
-            set({ isLoading: false });
-            throw error;
-        }
-    },
-
-    fetchSessionState: async (sessionId: string) => {
-        try {
-            const headers = await getAuthHeaders();
-            const response = await fetch(
-                `/api/v1/mvp-builder/${sessionId}/state`,
-                { headers }
-            );
-
-            if (!response.ok) {
-                throw new Error('Failed to fetch session state');
-            }
-
-            const data = await response.json();
-
-            set({
-                sessionId: data.session_id,
-                uiState: data.state as BuilderState,
-                projectName: data.project_name,
-                buildMode: data.build_mode as BuildMode,
-                buildVersion: data.build_version,
-                prdSnapshot: data.prd_snapshot,
-                researchSnapshot: data.research_snapshot,
-                executionTimeline: data.timeline || [],
-                currentFiles: data.files || [],
-                previewUrl: data.preview_url,
-                previewStatus: data.preview_status as PreviewStatus,
-                autoFixAttempts: data.auto_fix_attempts || 0,
-                lastError: data.last_error,
-                canRevert: data.can_revert || false
-            });
-        } catch (error) {
-            console.error('Error fetching session state:', error);
-            throw error;
-        }
-    },
-
-    submitIdea: async (idea: string, runId?: string) => {
-        const { sessionId, createSession } = get();
-
-        // If no session but runId provided (Start from S1), create session with idea
-        if (!sessionId && runId) {
-            return createSession(runId, null, null, idea);
-        }
-
-        if (!sessionId) throw new Error('No active session');
-
-        set({ isLoading: true });
-
-        try {
-            const headers = await getAuthHeaders();
-            const response = await fetch(
-                `/api/v1/mvp-builder/${sessionId}/submit-idea`,
-                {
-                    method: 'POST',
-                    headers,
-                    body: JSON.stringify({ idea })
-                }
-            );
-
-            if (!response.ok) {
-                throw new Error('Failed to submit idea');
-            }
-
-            const data = await response.json();
-            set({ uiState: data.state as BuilderState, isLoading: false });
-
-            // Start polling for state updates
-            get().startStatePolling();
-        } catch (error) {
-            console.error('Error submitting idea:', error);
-            set({ isLoading: false });
-            throw error;
-        }
-    },
-
-    iterate: async (prompt: string, buildMode?: BuildMode) => {
-        const { sessionId } = get();
-        if (!sessionId) throw new Error('No active session');
-
-        set({ isLoading: true });
-
-        try {
-            const headers = await getAuthHeaders();
-            const response = await fetch(
-                `/api/v1/mvp-builder/${sessionId}/iterate`,
-                {
-                    method: 'POST',
-                    headers,
-                    body: JSON.stringify({
-                        prompt,
-                        build_mode: buildMode || get().buildMode
-                    })
-                }
-            );
-
-            if (!response.ok) {
-                throw new Error('Failed to iterate');
-            }
-
-            const data = await response.json();
-            set({
-                uiState: data.state as BuilderState,
-                buildVersion: data.build_version,
-                isLoading: false
-            });
-
-            // Refresh state
-            await get().fetchSessionState(sessionId);
-        } catch (error) {
-            console.error('Error iterating:', error);
-            set({ isLoading: false });
-            throw error;
-        }
-    },
-
-    freeze: async () => {
-        const { sessionId } = get();
-        if (!sessionId) throw new Error('No active session');
-
-        set({ isLoading: true });
-
-        try {
-            const headers = await getAuthHeaders();
-            const response = await fetch(
-                `/api/v1/mvp-builder/${sessionId}/freeze`,
-                {
-                    method: 'POST',
-                    headers
-                }
-            );
-
-            if (!response.ok) {
-                throw new Error('Failed to freeze build');
-            }
-
-            const data = await response.json();
-            set({ uiState: data.state as BuilderState, isLoading: false });
-        } catch (error) {
-            console.error('Error freezing build:', error);
-            set({ isLoading: false });
-            throw error;
-        }
-    },
-
-    revert: async () => {
-        const { sessionId } = get();
-        if (!sessionId) throw new Error('No active session');
-
-        set({ isLoading: true });
-
-        try {
-            const headers = await getAuthHeaders();
-            const response = await fetch(
-                `/api/v1/mvp-builder/${sessionId}/revert`,
-                {
-                    method: 'POST',
-                    headers
-                }
-            );
-
-            if (!response.ok) {
-                throw new Error('Failed to revert build');
-            }
-
-            const data = await response.json();
-            set({
-                uiState: data.state as BuilderState,
-                buildVersion: data.build_version,
-                autoFixAttempts: 0,
-                lastError: null,
-                isLoading: false
-            });
-
-            // Refresh state
-            await get().fetchSessionState(sessionId);
-        } catch (error) {
-            console.error('Error reverting build:', error);
-            set({ isLoading: false });
-            throw error;
-        }
-    },
-
-    setBuildMode: (mode: BuildMode) => {
-        set({ buildMode: mode });
-    },
-
-    reset: () => {
-        set(initialState);
-    },
-
-    // Helper: Start polling for state updates during build
-    startStatePolling: () => {
-        const { sessionId, uiState } = get();
-        if (!sessionId) return;
-
-        // Poll while in transitional states
-        const shouldPoll = ['S2', 'S3', 'S5'].includes(uiState);
-
-        if (shouldPoll) {
-            const interval = setInterval(async () => {
-                const currentState = get().uiState;
-                // Stop polling when reaching stable or frozen state
-                if (['S4', 'S6'].includes(currentState)) {
-                    clearInterval(interval);
-                    return;
-                }
-
-                try {
-                    await get().fetchSessionState(sessionId);
-                } catch (error) {
-                    console.error('Polling error:', error);
-                    clearInterval(interval);
-                }
-            }, 1000); // Poll every second
-
-            // Cleanup after 5 minutes
-            setTimeout(() => clearInterval(interval), 300000);
-        }
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : 'Unknown error';
+      set({ isBuilding: false, isLoading: false, error: msg });
     }
-}));
+  },
 
+  submitIdea: async (idea: string, runId?: string) => {
+    // runId currently unused, kept for compatibility
+    await get().buildMVP(idea);
+  },
+
+  // Iterate over prompts (alias for improveMVP)
+  iterate: async (prompt: string) => {
+    await get().improveMVP(prompt);
+  },
+
+  improveMVP: async (instruction: string) => {
+    const { sessionId } = get();
+    if (!sessionId) return;
+
+    set({ isBuilding: true, isLoading: true, error: null });
+
+    try {
+      const headers = await getAuthHeaders();
+      await apiFetch(`/api/v1/mvp-builder/${sessionId}/improve`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ instruction }),
+      });
+
+      // Resume polling
+      get().stopPolling();
+      pollInterval = setInterval(() => get().pollState(), 2000);
+
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : 'Unknown error';
+      set({ isBuilding: false, isLoading: false, error: msg });
+    }
+  },
+
+  pollState: async () => {
+    const { sessionId } = get();
+    if (!sessionId) return;
+
+    try {
+      const headers = await getAuthHeaders();
+      const session = await apiFetch<BuildSession>(`/api/v1/mvp-builder/${sessionId}/state`, { headers });
+      const steps = session.pipeline_steps || get().pipelineSteps;
+
+      // Find current active step
+      const activeIdx = steps.findIndex((s) => s.status === 'active');
+      const isComplete = session.state === 'S4' || session.state === 'S6';
+      const isFailed = session.state === 'S5' && session.last_error;
+
+      set({
+          session,
+          projectName: session.project_name || '',
+          pipelineSteps: steps,
+          // Ensure type field is populated for UI components
+          executionTimeline: session.timeline.map((e) => ({ ...e, type: e.type ?? e.event_type })),
+          currentStepIndex: activeIdx >= 0 ? activeIdx : (isComplete ? steps.length : get().currentStepIndex),
+          filesCount: session.files_count,
+          isBuilding: !(isComplete || isFailed),
+          isLoading: !(isComplete || isFailed),
+          // UI mappings
+          previewUrl: session.preview_url || '',
+          previewStatus: session.state || '',
+          uiState: session.state || '',
+          buildVersion: session.build_version || 0
+        });
+
+      // Stop polling when build is done
+      if (isComplete || isFailed) {
+        get().stopPolling();
+
+        if (isFailed) {
+          set({ error: session.last_error?.message || 'Build failed' });
+        }
+
+        // Fetch generated files
+        if (session.files_count > 0) {
+          get().fetchFiles();
+        }
+      }
+
+    } catch (err: any) {
+      console.error('pollState failed:', err);
+    }
+  },
+
+  stopPolling: () => {
+    if (pollInterval) {
+      clearInterval(pollInterval);
+      pollInterval = null;
+    }
+  },
+
+  fetchFiles: async () => {
+    const { sessionId } = get();
+    if (!sessionId) return;
+
+    try {
+      const headers = await getAuthHeaders();
+      const data = await apiFetch<any>(`/api/v1/mvp-builder/${sessionId}/files`, { headers });
+      set({ files: data.files || [], filesCount: data.total_files || 0 });
+    } catch (err: any) {
+      console.error('fetchFiles failed:', err);
+    }
+  },
+
+  // Alias for freeze action
+  freeze: async () => {
+    const { sessionId } = get();
+    if (!sessionId) return;
+    try {
+      const headers = await getAuthHeaders();
+      await apiFetch(`/api/v1/mvp-builder/${sessionId}/freeze`, { method: 'POST', headers });
+      get().pollState();
+    } catch (err: any) {
+      console.error('freezeBuild failed:', err);
+    }
+  },
+  // Original freezeBuild retained for backward compatibility (optional)
+  freezeBuild: async () => {
+    const { sessionId } = get();
+    if (!sessionId) return;
+    try {
+      const headers = await getAuthHeaders();
+      await apiFetch(`/api/v1/mvp-builder/${sessionId}/freeze`, { method: 'POST', headers });
+      get().pollState();
+    } catch (err: any) {
+      console.error('freezeBuild failed:', err);
+    }
+  },
+
+  revertBuild: async () => {
+    const { sessionId } = get();
+    if (!sessionId) return;
+
+    try {
+      const headers = await getAuthHeaders();
+      await apiFetch(`/api/v1/mvp-builder/${sessionId}/revert`, { method: 'POST', headers });
+      get().pollState();
+    } catch (err: any) {
+      console.error('revertBuild failed:', err);
+    }
+  },
+
+  reset: () => {
+    get().stopPolling();
+    set({
+      sessionId: null,
+      session: null,
+      pipelineSteps: [...DEFAULT_STEPS],
+      currentStepIndex: -1,
+      files: [],
+      filesCount: 0,
+      isBuilding: false,
+      error: null,
+      idea: '',
+      buildVersion: 0,
+    });
+  },
+}));

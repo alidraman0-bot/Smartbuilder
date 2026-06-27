@@ -18,7 +18,9 @@ export const useCodeSync = ({ clientId, appId, onRemoteChange }: UseCodeSyncProp
 
     useEffect(() => {
         const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-        const host = window.location.hostname === 'localhost' ? 'localhost:8000' : window.location.host;
+        const host = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
+            ? '127.0.0.1:8001'
+            : window.location.host;
         const socketUrl = `${protocol}//${host}/api/v1/editor/ws/${clientId}/${appId}`;
 
         console.log(`Connecting to WebSocket: ${socketUrl}`);

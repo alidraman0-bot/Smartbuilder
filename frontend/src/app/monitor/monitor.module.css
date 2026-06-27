@@ -1,0 +1,244 @@
+/* monitor.module.css */
+:root {
+  /* Colors already defined in variables.css */
+}
+
+/* Layout */
+.root {
+  min-height: 100vh;
+  color: var(--color-white);
+  background: var(--color-bg-primary);
+  selection {
+    background: var(--color-selection-bg);
+  }
+}
+
+.contextBar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1rem 2rem; /* px-8 py-4 */
+  background: rgba(9, 9, 11, 0.8); /* bg-[#09090b]/80 */
+  border-bottom: 1px solid var(--color-muted-dark);
+  backdrop-filter: blur(8px);
+  flex-direction: column;
+  gap: 1rem;
+  position: sticky;
+  top: 0;
+  z-index: 50;
+}
+
+.viewToggle {
+  display: flex;
+  background: #18181b;
+  padding: 0.25rem; /* p-1 */
+  border-radius: 0.5rem; /* rounded-lg */
+  border: 1px solid var(--color-muted-dark);
+}
+
+.viewButton {
+  padding: 0.1875rem 0.75rem; /* px-3 py-1 */
+  font-size: 0.75rem; /* text-xs */
+  font-weight: 500; /* medium */
+  border-radius: 0.375rem; /* rounded-md */
+  transition: all 0.2s ease-in-out;
+  color: var(--color-muted);
+}
+
+.viewButtonActive {
+  background: #27272a;
+  color: var(--color-white);
+  box-shadow: 0 0 2px var(--color-white);
+}
+
+/* Reusable panel/card style */
+.card {
+  padding: 1.5rem; /* p-6 */
+  border-radius: 1rem; /* rounded-2xl */
+  border: 1px solid var(--color-muted-dark);
+  background: var(--color-bg-secondary);
+}
+
+.hero {
+  position: relative;
+  overflow: hidden;
+  border-radius: 1.5rem; /* rounded-3xl */
+  border: 1px solid var(--color-muted-dark);
+  background: var(--color-bg-secondary);
+  padding: 3rem; /* p-12 */
+}
+
+.pipelineTracker {
+  max-width: 64rem; /* max-w-4xl */
+  margin: 0 auto;
+  width: 100%;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 1rem; /* rounded-2xl */
+  padding: 0.125rem; /* p-0.5 */
+}
+
+/* Utility classes */
+.textMuted {
+  color: var(--color-muted);
+}
+.textWhite90 {
+  color: rgba(255, 255, 255, 0.9);
+}
+.bgPrimary {
+  background: var(--color-bg-primary);
+}
+.bgSecondary {
+  background: var(--color-bg-secondary);
+}
+.borderMuted {
+  border-color: var(--color-muted-dark);
+}
+
+
+/* Additional layout utilities */
+
+/* Full-screen placeholder for missing deployment */
+.fullScreen {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100vh;
+  background: var(--color-bg-primary);
+  color: var(--color-muted);
+}
+
+/* Health badge container */
+.healthBadge {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.125rem 0.5rem; /* px-2 py-0.5 */
+  border-radius: 0.25rem; /* rounded-full */
+  font-size: 0.75rem; /* text-xs */
+  font-weight: 500; /* medium */
+  border: 1px solid var(--color-muted-dark);
+}
+
+.healthy {
+  background: var(--color-accent-emerald)10; /* bg-emerald-500/10 */
+  color: var(--color-accent-emerald);
+  border-color: var(--color-accent-emerald)20; /* border-emerald-500/20 */
+}
+.degraded {
+  background: var(--color-accent-amber)10; /* bg-amber-500/10 */
+  color: var(--color-accent-amber);
+  border-color: var(--color-accent-amber)20; /* border-amber-500/20 */
+}
+.critical {
+  background: var(--color-accent-red)10; /* bg-red-500/10 */
+  color: var(--color-accent-red);
+  border-color: var(--color-accent-red)20; /* border-red-500/20 */
+}
+
+/* Section header (replaces flex items-center ... Tailwind) */
+.sectionHeader {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 1.5rem;
+  font-size: 0.875rem; /* text-sm */
+  font-weight: 500;
+  color: var(--color-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+/* Additional layout utilities */
+
+/* Grid for signal tiles (4 columns, gap 1rem) */
+.signalGrid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 1rem; /* equivalent to gap-4 */
+}
+
+/* Grid for usage/momentum section (2 columns, gap 2rem) */
+.gridCols2Gap8 {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 2rem; /* equivalent to gap-8 */
+}
+
+/* Grid container for main layout (12 columns, gap 2rem) */
+.grid12 {
+  display: grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  gap: 2rem; /* gap-8 */
+}
+
+/* Column span utilities */
+.colSpan8 {
+  grid-column: span 8 / span 8;
+}
+.colSpan4 {
+  grid-column: span 4 / span 4;
+}
+
+/* Section header styling */
+.sectionHeader {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 1.5rem;
+  font-size: 0.875rem; /* text-sm */
+  font-weight: 500;
+  color: var(--color-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+/* Main content container */
+.mainContainer {
+  max-width: 80rem; /* max-w-7xl */
+  margin: 0 auto;
+  padding: 2rem; /* p-8 */
+  display: flex;
+  flex-direction: column;
+  gap: 3rem; /* space-y-12 */
+  animation: fadeIn 0.7s ease-in-out;
+}
+
+/* Signal tile card */
+.signalTile {
+  padding: 1.25rem; /* p-5 */
+  border-radius: 0.75rem; /* rounded-xl */
+  border: 1px solid var(--color-muted-dark);
+  background: var(--color-bg-secondary);
+  transition: border-color 0.2s;
+}
+.signalTile:hover {
+  border-color: #3f3f46; /* hover:border-[#3f3f46] */
+}
+
+/* Performance section wrapper */
+.performanceSection {
+  grid-column: span 8 / span 8; /* col-span-8 */
+  display: flex;
+  flex-direction: column;
+  gap: 2rem; /* space-y-8 */
+}
+
+/* Incident timeline container */
+.incidentContainer {
+  grid-column: span 4 / span 4; /* col-span-4 */
+}
+
+/* Recent activity section */
+.recentActivity {
+  padding-top: 2rem; /* pt-8 */
+  border-top: 1px solid var(--color-muted-dark);
+}
+
+/* Fade-in animation */
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+

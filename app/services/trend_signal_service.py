@@ -1,8 +1,10 @@
 import logging
 import httpx
+from app.core.http_client import http_client
 from typing import List, Dict, Any, Optional
 from app.core.supabase import get_service_client
 from app.core.config import settings
+from app.core.retry import retry_request
 
 logger = logging.getLogger(__name__)
 
@@ -27,70 +29,78 @@ class TrendSignalService:
                 chunk = keywords[i:i + chunk_size]
                 q = ",".join(chunk)
                 
-                async with httpx.AsyncClient() as client:
-                    params = {
-                        "engine": "google_trends",
-                        "q": q,
-                        "data_type": "TIMESERIES",
-                        "api_key": self.serpapi_key
-                    }
-                    resp = await client.get("https://serpapi.com/search", params=params)
-                    if resp.status_code == 200:
-                        data = resp.json()
-                        interest_over_time = data.get("interest_over_time", {})
-                        timeline_data = interest_over_time.get("timeline_data", [])
+                client = http_client
+                params = {
+                    "engine": "google_trends",
+                    "q": q,
+                    "data_type": "TIMESERIES",
+                    "api_key": self.serpapi_key
+                }
+                resp = await retry_request(lambda: client.get("https://serpapi.com/search", params=params))
+                if resp.status_code == 200:
+                    data = resp.json()
+                    interest_over_time = data.get("interest_over_time", {})
+                    timeline_data = interest_over_time.get("timeline_data", [])
+                    
+                    if not timeline_data:
+                        continue
                         
-                        if not timeline_data:
-                            continue
+                    # Process each keyword in the chunk
+                    for kw in chunk:
+                        # Calculate growth (last few points vs earlier points)
+                        # Simplified: compare average of first 3 points to last 3 points
+                        values = []
+                        for entry in timeline_data:
+                            for val in entry.get("values", []):
+                                if val.get("query") == kw:
+                                    try:
+                                        values.append(float(val.get("extracted_value", 0)))
+                                    except:
+                                        pass
+                        
+                        if len(values) >= 6:
+                            first_avg = sum(values[:3]) / 3
+                            last_avg = sum(values[-3:]) / 3
                             
-                        # Process each keyword in the chunk
-                        for kw in chunk:
-                            # Calculate growth (last few points vs earlier points)
-                            # Simplified: compare average of first 3 points to last 3 points
-                            values = []
-                            for entry in timeline_data:
-                                for val in entry.get("values", []):
-                                    if val.get("query") == kw:
-                                        try:
-                                            values.append(float(val.get("extracted_value", 0)))
-                                        except:
-                                            pass
+                            growth_val = 0
+                            if first_avg > 0:
+                                growth_val = ((last_avg - first_avg) / first_avg) * 100
+                            else:
+                                growth_val = last_avg * 10 # Arbitrary multiplier for 0 baseline
+                                
+                            growth_str = f"{'+' if growth_val >= 0 else ''}{int(growth_val)}%"
                             
-                            if len(values) >= 6:
-                                first_avg = sum(values[:3]) / 3
-                                last_avg = sum(values[-3:]) / 3
-                                
-                                growth_val = 0
-                                if first_avg > 0:
-                                    growth_val = ((last_avg - first_avg) / first_avg) * 100
-                                else:
-                                    growth_val = last_avg * 10 # Arbitrary multiplier for 0 baseline
-                                    
-                                growth_str = f"{'+' if growth_val >= 0 else ''}{int(growth_val)}%"
-                                
-                                momentum = "stable"
-                                if growth_val > 20:
-                                    momentum = "rising"
-                                elif growth_val > 50:
-                                    momentum = "explosive"
-                                elif growth_val < -10:
-                                    momentum = "declining"
-                                
-                                signal = {
-                                    "keyword": kw,
-                                    "growth": growth_str,
-                                    "momentum": momentum
-                                }
-                                results.append(signal)
-                                
-                                if idea_id:
+                            momentum = "stable"
+                            if growth_val > 20:
+                                momentum = "rising"
+                            elif growth_val > 50:
+                                momentum = "explosive"
+                            elif growth_val < -10:
+                                momentum = "declining"
+                            
+                            signal = {
+                                "keyword": kw,
+                                "growth": growth_str,
+                                "momentum": momentum
+                            }
+                            results.append(signal)
+                            
+                            if idea_id:
+                                try:
+                                    # Table lacks UNIQUE constraint — use insert, ignore duplicates
                                     self.supabase.table("trend_signals").insert({
                                         "idea_id": idea_id,
                                         "keyword": kw,
                                         "growth": growth_str,
                                         "momentum": momentum
                                     }).execute()
+                                except Exception as db_e:
+                                    err_str = str(db_e)
+                                    if "duplicate" in err_str.lower() or "23505" in err_str:
+                                        logger.debug(f"Trend signal already exists for {kw}, skipping")
+                                    else:
+                                        logger.warning(f"Failed to save trend signal for {kw}: {db_e}")
         except Exception as e:
-            logger.error(f"Error in TrendSignalService: {e}")
+            logger.error(f"Error in TrendSignalService for keywords {keywords}: {e}", exc_info=True)
             
         return results

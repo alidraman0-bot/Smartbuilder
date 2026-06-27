@@ -48,7 +48,7 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <body className="antialiased bg-black selection:bg-indigo-500/30">
-        <Script src="https://js.paystack.co/v1/inline.js" strategy="lazyOnload" />
+        <Script src="https://js.paystack.co/v1/inline.js" strategy="afterInteractive" />
         <DashboardWrapper>
           {children}
         </DashboardWrapper>

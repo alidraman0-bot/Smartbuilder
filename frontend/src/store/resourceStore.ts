@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { Resource, IntelligenceData } from '@/types/resources';
 import { getAuthHeaders } from '@/utils/supabase/auth';
+import { apiFetch } from '@/lib/apiClient';
 
 interface ResourceState {
     resources: Resource[];
@@ -14,11 +15,11 @@ interface ResourceState {
     // Actions
     fetchResources: (stage?: string) => Promise<void>;
     fetchIntelligence: () => Promise<void>;
-    applyResource: (resourceId: string) => Promise<void>;
+    applyResource: (resourceId: string, projectId: string) => Promise<void>;
     setStage: (stage: string | null) => void;
 }
 
-const API_BASE_URL = 'http://localhost:8000/api/v1/resources';
+const API_BASE_URL = '/api/v1/resources';
 
 export const useResourceStore = create<ResourceState>((set, get) => ({
     resources: [],
@@ -32,14 +33,12 @@ export const useResourceStore = create<ResourceState>((set, get) => ({
         try {
             const headers = await getAuthHeaders();
             const query = stage ? `?stage=${stage}` : '';
-            const response = await fetch(`${API_BASE_URL}/${query}`, {
+            const data = await apiFetch<any>(`${API_BASE_URL}/${query}`, {
                 headers
             });
-            if (!response.ok) throw new Error('Failed to fetch resources');
-            const data = await response.json();
             set({ resources: data });
-        } catch (err) {
-            set({ error: (err as Error).message });
+        } catch (err: any) {
+            set({ error: err.message });
         } finally {
             set({ isLoading: false });
         }
@@ -48,33 +47,28 @@ export const useResourceStore = create<ResourceState>((set, get) => ({
     fetchIntelligence: async () => {
         try {
             const headers = await getAuthHeaders();
-            const response = await fetch(`${API_BASE_URL}/intelligence`, {
+            const data = await apiFetch<any>(`${API_BASE_URL}/intelligence`, {
                 headers
             });
-            if (!response.ok) throw new Error('Failed to fetch intelligence');
-            const data = await response.json();
             set({ intelligence: data });
         } catch (err) {
             console.error("Failed to fetch intelligence", err);
         }
     },
 
-    applyResource: async (resourceId: string) => {
+    applyResource: async (resourceId: string, projectId: string) => {
         set({ isLoading: true });
         try {
             const headers = await getAuthHeaders();
-            // In a real app we'd get the actual project ID
-            const projectId = "proj-123";
-            const response = await fetch(`${API_BASE_URL}/${resourceId}/apply?project_id=${projectId}`, {
+            await apiFetch(`${API_BASE_URL}/${resourceId}/apply?project_id=${projectId}`, {
                 method: 'POST',
                 headers
             });
-            if (!response.ok) throw new Error('Failed to apply resource');
 
             // Could trigger a refresh or toast here
             console.log('Resource applied successfully');
-        } catch (err) {
-            set({ error: (err as Error).message });
+        } catch (err: any) {
+            set({ error: err.message });
         } finally {
             set({ isLoading: false });
         }

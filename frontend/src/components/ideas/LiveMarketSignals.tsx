@@ -2,7 +2,8 @@
 
 import React, { useEffect, useState } from 'react';
 import { Activity, ExternalLink, RefreshCw, Zap, TrendingUp, AlertCircle, Package } from 'lucide-react';
-import { createClient } from '@/utils/supabase/client';
+import { apiFetch } from '@/lib/apiClient';
+import { getAuthHeaders } from '@/utils/supabase/auth';
 
 export interface MarketSignal {
     id?: string;
@@ -25,27 +26,60 @@ export default function LiveMarketSignals({ onSignalClick, isGenerating }: LiveM
     const [error, setError] = useState<string | null>(null);
 
     const fetchSignals = async () => {
+        setLoading(true);
+        setError(null);
+
+        // Step 1: Load cached signals first for instant UI response
+        const cachedRaw = typeof window !== 'undefined' ? localStorage.getItem('market-signals-cache') : null;
+        const cachedSignals: MarketSignal[] = cachedRaw ? JSON.parse(cachedRaw) : [];
+        if (cachedSignals.length > 0 && signals.length === 0) {
+            setSignals(cachedSignals);
+        }
+
         try {
-            setLoading(true);
-            setError(null);
-            const supabase = createClient();
-            const { data: { session } } = await supabase.auth.getSession();
+            // Step 2: Fetch live signals from API
+            const headers = await getAuthHeaders();
+            const raw: any = await apiFetch('/api/v1/market-signals', { headers });
 
-            const res = await fetch('/api/market-signals', {
-                headers: {
-                    'Authorization': `Bearer ${session?.access_token}`
-                }
-            });
+            const liveSignals: MarketSignal[] = (Array.isArray(raw) ? raw : []).map((item: any) => ({
+                id: item.id || `${item.source}-${item.title}`.replace(/\s+/g, '-').toLowerCase(),
+                source: item.source ?? 'unknown',
+                title: item.title ?? item.topic ?? '',
+                description: item.description ?? item.summary ?? '',
+                url: item.url ?? '#',
+                signal_strength: item.signal_strength ?? item.trend_score ?? 50,
+                category: item.category ?? 'trend',
+            }));
 
-            if (!res.ok) {
-                throw new Error('Failed to fetch market signals');
+            // Step 3: Merge live + cached (replace duplicates by id)
+            const mergedSignalsMap = new Map<string | undefined, MarketSignal>();
+            // Add cached first
+            cachedSignals.forEach(sig => mergedSignalsMap.set(sig.id, sig));
+            // Overwrite/add with live
+            liveSignals.forEach(sig => mergedSignalsMap.set(sig.id, sig));
+
+            const mergedSignals = Array.from(mergedSignalsMap.values())
+                .sort((a, b) => (b.signal_strength || 0) - (a.signal_strength || 0));
+
+            // Step 4: Save merged data to cache
+            if (typeof window !== 'undefined') {
+                localStorage.setItem('market-signals-cache', JSON.stringify(mergedSignals));
             }
 
-            const data = await res.json();
-            setSignals(data);
+            setSignals(mergedSignals);
+            setError(null);
         } catch (err: any) {
-            console.error(err);
-            setError(err.message);
+            console.error('Fetch failed, using cached signals:', err);
+            setError(
+                cachedSignals.length > 0
+                    ? '⚠️ Unable to fetch live signals. Showing cached results.'
+                    : '❌ Failed to fetch live signals. Please check your connection.'
+            );
+
+            // Fallback to cache if not already showing something
+            if (signals.length === 0 && cachedSignals.length > 0) {
+                setSignals(cachedSignals);
+            }
         } finally {
             setLoading(false);
         }
@@ -98,73 +132,82 @@ export default function LiveMarketSignals({ onSignalClick, isGenerating }: LiveM
                         <RefreshCw className="w-6 h-6 animate-spin text-indigo-500/50" />
                         <p className="text-xs">Scanning the web for opportunities...</p>
                     </div>
-                ) : error ? (
-                    <div className="text-xs text-red-400 p-4 bg-red-500/10 rounded-lg text-center">
-                        {error}
-                    </div>
-                ) : signals.length === 0 ? (
-                    <div className="text-xs text-zinc-500 text-center p-4">
-                        No signals found recently.
-                    </div>
                 ) : (
-                    signals.map((signal, idx) => (
-                        <div
-                            key={signal.id || idx}
-                            onClick={() => !isGenerating && onSignalClick(signal)}
-                            className={`group relative p-4 rounded-xl border border-white/5 bg-white/[0.01] hover:bg-white/[0.03] hover:border-indigo-500/30 transition-all cursor-pointer ${isGenerating ? 'opacity-50 pointer-events-none' : ''}`}
-                        >
-                            <div className="flex flex-wrap items-center gap-2 mb-3">
-                                <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded border ${getSourceStyle(signal.source)}`}>
-                                    {signal.source === 'hn' ? 'Hacker News' : signal.source}
-                                </span>
+                    <>
+                        {error && (
+                            <div className={`text-[11px] p-2 rounded-lg text-center mb-2 ${signals.length > 0
+                                    ? 'bg-yellow-500/10 text-yellow-500/80 border border-yellow-500/20'
+                                    : 'bg-red-500/10 text-red-400 border border-red-500/20'
+                                }`}>
+                                {error}
+                            </div>
+                        )}
 
-                                <span className="flex items-center text-[10px] text-zinc-400 uppercase tracking-wider bg-white/5 px-2 py-0.5 rounded">
-                                    {getCategoryIcon(signal.category)}
-                                    {signal.category}
-                                </span>
+                        {signals.length === 0 && !loading ? (
+                            <div className="text-xs text-zinc-500 text-center p-4">
+                                No signals found recently.
+                            </div>
+                        ) : (
+                            signals.map((signal, idx) => (
+                                <div
+                                    key={signal.id || idx}
+                                    onClick={() => !isGenerating && onSignalClick(signal)}
+                                    className={`group relative p-4 rounded-xl border border-white/5 bg-white/[0.01] hover:bg-white/[0.03] hover:border-indigo-500/30 transition-all cursor-pointer ${isGenerating ? 'opacity-50 pointer-events-none' : ''}`}
+                                >
+                                    <div className="flex flex-wrap items-center gap-2 mb-3">
+                                        <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded border ${getSourceStyle(signal.source)}`}>
+                                            {signal.source === 'hn' ? 'Hacker News' : signal.source}
+                                        </span>
 
-                                <div className="ml-auto flex items-center space-x-1">
-                                    <span className="text-[10px] text-zinc-500 uppercase tracking-widest">Strength</span>
-                                    <div className="flex items-center">
-                                        <div className="w-16 h-1.5 bg-white/10 rounded-full overflow-hidden">
-                                            <div
-                                                className="h-full bg-gradient-to-r from-indigo-500 to-purple-500"
-                                                style={{ width: `${signal.signal_strength}%` }}
-                                            />
+                                        <span className="flex items-center text-[10px] text-zinc-400 uppercase tracking-wider bg-white/5 px-2 py-0.5 rounded">
+                                            {getCategoryIcon(signal.category)}
+                                            {signal.category}
+                                        </span>
+
+                                        <div className="ml-auto flex items-center space-x-1">
+                                            <span className="text-[10px] text-zinc-500 uppercase tracking-widest">Strength</span>
+                                            <div className="flex items-center">
+                                                <div className="w-16 h-1.5 bg-white/10 rounded-full overflow-hidden">
+                                                    <div
+                                                        className="h-full bg-gradient-to-r from-indigo-500 to-purple-500"
+                                                        style={{ width: `${signal.signal_strength}%` }}
+                                                    />
+                                                </div>
+                                            </div>
                                         </div>
                                     </div>
+
+                                    <h3 className="text-sm font-semibold text-white leading-snug mb-2 group-hover:text-indigo-300 transition-colors">
+                                        {signal.title}
+                                    </h3>
+
+                                    {signal.description && (
+                                        <p className="text-xs text-zinc-400 line-clamp-3 leading-relaxed mb-3 group-hover:text-zinc-300">
+                                            {signal.description}
+                                        </p>
+                                    )}
+
+                                    <div className="flex items-center justify-between mt-4">
+                                        <a
+                                            href={signal.url}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            onClick={(e) => e.stopPropagation()}
+                                            className="flex items-center text-[10px] text-zinc-500 hover:text-indigo-400 uppercase tracking-widest transition-colors"
+                                        >
+                                            <ExternalLink className="w-3 h-3 mr-1" />
+                                            View Source
+                                        </a>
+
+                                        <span className="flex items-center text-[10px] font-bold text-indigo-400 opacity-0 group-hover:opacity-100 transition-opacity uppercase tracking-wider">
+                                            <Zap className="w-3 h-3 mr-1" />
+                                            Generate Idea
+                                        </span>
+                                    </div>
                                 </div>
-                            </div>
-
-                            <h3 className="text-sm font-semibold text-white leading-snug mb-2 group-hover:text-indigo-300 transition-colors">
-                                {signal.title}
-                            </h3>
-
-                            {signal.description && (
-                                <p className="text-xs text-zinc-400 line-clamp-3 leading-relaxed mb-3 group-hover:text-zinc-300">
-                                    {signal.description}
-                                </p>
-                            )}
-
-                            <div className="flex items-center justify-between mt-4">
-                                <a
-                                    href={signal.url}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    onClick={(e) => e.stopPropagation()}
-                                    className="flex items-center text-[10px] text-zinc-500 hover:text-indigo-400 uppercase tracking-widest transition-colors"
-                                >
-                                    <ExternalLink className="w-3 h-3 mr-1" />
-                                    View Source
-                                </a>
-
-                                <span className="flex items-center text-[10px] font-bold text-indigo-400 opacity-0 group-hover:opacity-100 transition-opacity uppercase tracking-wider">
-                                    <Zap className="w-3 h-3 mr-1" />
-                                    Generate Idea
-                                </span>
-                            </div>
-                        </div>
-                    ))
+                            ))
+                        )}
+                    </>
                 )}
             </div>
         </div>

@@ -1,21 +1,42 @@
-from fastapi import FastAPI, Request
+from datetime import datetime
 from fastapi.responses import JSONResponse
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 import time
 import logging
+import httpx
 import traceback
 import os
 
-# Configure logging
-logging.basicConfig(level=logging.INFO)
+# Production Hardening Imports
+from app.core.logging import setup_logging
+from app.middleware.auth_middleware import AuthMiddleware
+from app.core.config import settings
+
+# Initialize logging and monitoring
+setup_logging()
 logger = logging.getLogger(__name__)
+
+try:
+    import sentry_sdk
+    if os.getenv("SENTRY_DSN"):
+        sentry_sdk.init(
+            dsn=os.getenv("SENTRY_DSN"),
+            traces_sample_rate=1.0,
+            environment=os.getenv("ENVIRONMENT", "development")
+        )
+        logger.info("Sentry monitoring initialized.")
+except ImportError:
+    pass
+
 from app.api.v1 import (
     ideas_api, research_api, builder_api, orchestration_api, 
     projects_api, monitoring_api, compliance_api, resources_api, 
     memory_api, preferences_api, settings_api, mvp_builder, editor,
     deployment_api, analytics_api, founder_api, billing_api, paystack_webhook,
     opportunity_api, market_signals_api, opportunity_engine_api, opportunity_scoring_api,
-    startup_api, blueprint_api, ai_cofounder_api, verdict_api
+    startup_api, blueprint_api, ai_cofounder_api, verdict_api, build_api, health,
+    completions_api
 )
 
 app = FastAPI(
@@ -25,9 +46,24 @@ app = FastAPI(
     redirect_slashes=False
 )
 
+# Global Exception Handler
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    logger.error(f"CRITICAL ERROR for {request.method} {request.url}: {exc}")
+    logger.error(traceback.format_exc())
+    return JSONResponse(
+        status_code=500,
+        content={
+            "success": False,
+            "detail": "Internal Server Error. Our team has been notified.",
+            "error_type": type(exc).__name__
+        }
+    )
+
+# Middlewares
+app.add_middleware(AuthMiddleware)
+
 # Configure CORS
-# In development, you might use ["*"]
-# In production, this should be restricted to known origins via ALLOWED_ORIGINS env var.
 allowed_origins_raw = os.getenv("ALLOWED_ORIGINS", "http://localhost:3000,http://127.0.0.1:3000")
 allowed_origins = [origin.strip() for origin in allowed_origins_raw.split(",")]
 
@@ -38,34 +74,38 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
 @app.middleware("http")
 async def log_requests(request: Request, call_next):
     start_time = time.time()
+    logger.info(f"Incoming Request: {request.method} {request.url}")
     
-    # Clone request body for logging (careful with large bodies)
-    try:
-        # body = await request.body() # This consumes the body, need to re-read or handle carefully
-        logger.info(f"Incoming Request: {request.method} {request.url}")
-        logger.info(f"Headers: {request.headers}")
-        # logger.info(f"Body: {body.decode()}") 
-    except Exception:
-        pass
-        
     try:
         response = await call_next(request)
         process_time = time.time() - start_time
         logger.info(f"Response Status: {response.status_code} (took {process_time:.4f}s)")
+        # Prepare telemetry payload
+        payload = {
+            "method": request.method,
+            "path": request.url.path,
+            "status": response.status_code,
+            "latency_ms": int(process_time * 1000),
+            "timestamp": datetime.utcnow().isoformat(timespec='milliseconds') + "Z",
+
+        }
+        # Async fire‑and‑forget POST to telemetry ingest service
+        try:
+            async with httpx.AsyncClient() as client:
+                await client.post("http://localhost:8002/telemetry/ingest", json=payload, timeout=2.0)
+        except Exception as exc:
+            logger.warning(f"Telemetry POST failed: {exc}")
         return response
     except Exception as e:
-        logger.error(f"UNHANDLED EXCEPTION: {e}")
-        logger.error(traceback.format_exc())
-        return JSONResponse(
-            status_code=500,
-            content={"detail": "Internal Server Error", "error": str(e)}
-        )
+        # This will be caught by the exception handler, but we can log extra info here
+        logger.error(f"Request failed: {e}")
+        raise
 
 app.include_router(ideas_api.router, prefix="/api/v1/ideas", tags=["Ideas"])
+app.include_router(ideas_api.discovery_engine_router, prefix="/api", tags=["Idea Discovery Engine"])
 app.include_router(opportunity_api.router, prefix="/api/v1/opportunity", tags=["Opportunities"])
 app.include_router(opportunity_engine_api.router, prefix="/api/v1", tags=["Opportunity Engine"])
 app.include_router(opportunity_scoring_api.router, prefix="/api/v1", tags=["Opportunity Scoring"])
@@ -93,6 +133,9 @@ app.include_router(billing_api.router, prefix="/api/v1/billing", tags=["Billing"
 app.include_router(ai_cofounder_api.router, prefix="/api/v1/cofounder", tags=["AI Co-Founder"])
 app.include_router(verdict_api.router, prefix="/api/v1", tags=["Verdict"])
 app.include_router(paystack_webhook.router, prefix="/api/paystack", tags=["Webhooks"])
+app.include_router(build_api.router, prefix="/api/v1", tags=["Build Engine"])
+app.include_router(health.router, prefix="/api/v1/health", tags=["Health"])
+app.include_router(completions_api.router, prefix="/api/v1", tags=["AI Completions"])
 
 @app.get("/")
 async def root():

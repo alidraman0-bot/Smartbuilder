@@ -3,11 +3,11 @@ import { MessageSquare, Flame, TrendingUp, AlertCircle } from 'lucide-react';
 import { DemandAnalysis as DemandAnalysisType } from '@/types/research';
 
 interface DemandAnalysisProps {
-    analysis: DemandAnalysisType;
+    demand: DemandAnalysisType;
 }
 
-export default function DemandAnalysis({ analysis }: DemandAnalysisProps) {
-    const { demand_sources, pain_intensity_index, key_insights } = analysis;
+export default function DemandAnalysis({ demand }: DemandAnalysisProps) {
+    const { demand_sources, pain_intensity_index, key_insights } = demand;
 
     return (
         <section className="space-y-8">

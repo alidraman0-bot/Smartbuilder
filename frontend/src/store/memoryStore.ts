@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { getAuthHeaders } from '@/utils/supabase/auth';
+import { apiFetch } from '@/lib/apiClient';
 
 export interface MemoryEvent {
     id: string;
@@ -23,7 +24,7 @@ interface MemoryState {
     logManualEvent: (projectId: string, event: Partial<MemoryEvent>) => Promise<void>;
 }
 
-const API_BASE_URL = 'http://localhost:8000/api/v1/memory';
+const API_BASE_URL = '/api/v1/memory';
 
 export const useMemoryStore = create<MemoryState>((set, get) => ({
     timeline: [],
@@ -34,11 +35,9 @@ export const useMemoryStore = create<MemoryState>((set, get) => ({
         set({ isLoading: true, error: null });
         try {
             const headers = await getAuthHeaders();
-            const response = await fetch(`${API_BASE_URL}/${projectId}/timeline`, {
+            const data = await apiFetch<MemoryEvent[]>(`${API_BASE_URL}/${projectId}/timeline`, {
                 headers
             });
-            if (!response.ok) throw new Error('Failed to fetch timeline');
-            const data = await response.json();
             set({ timeline: data });
         } catch (err) {
             set({ error: (err as Error).message });
@@ -50,12 +49,11 @@ export const useMemoryStore = create<MemoryState>((set, get) => ({
     logManualEvent: async (projectId: string, event: Partial<MemoryEvent>) => {
         try {
             const headers = await getAuthHeaders();
-            const response = await fetch(`${API_BASE_URL}/${projectId}/log`, {
+            await apiFetch(`${API_BASE_URL}/${projectId}/log`, {
                 method: 'POST',
                 headers,
                 body: JSON.stringify(event)
             });
-            if (!response.ok) throw new Error('Failed to log event');
 
             // Refresh timeline after logging
             await get().fetchTimeline(projectId);

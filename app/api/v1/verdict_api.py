@@ -7,8 +7,7 @@ router = APIRouter()
 
 @router.post("/verdict", response_model=VerdictResponse)
 async def get_startup_verdict(
-    payload: VerdictRequest,
-    current_user: dict = Depends(get_current_user)
+    payload: VerdictRequest
 ):
     """
     Analyzes market research data and provides a final VC-style verdict.

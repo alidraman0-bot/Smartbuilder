@@ -2,7 +2,9 @@
 
 import React, { useState } from 'react';
 import { X, Check, Sparkles, Loader2, Crown, Zap } from 'lucide-react';
-import { createClient } from '@/utils/supabase/client';
+import { createClient } from '@/lib/supabase/browser';
+import { getAuthHeaders } from '@/utils/supabase/auth';
+import { apiFetch } from '@/lib/apiClient';
 
 interface UpgradeModalProps {
     plan: string;
@@ -72,19 +74,15 @@ export default function UpgradeModal({ plan, onClose, onSuccess }: UpgradeModalP
         const checkStatus = async () => {
             attempts++;
             try {
-                const res = await fetch(`/api/v1/billing/subscription?org_id=${orgId}`);
-                if (res.ok) {
-                    const data = await res.json();
-                    if (data.plan === targetPlan && data.status === 'active') {
-                        if (onSuccess) {
-                            onSuccess();
-                        } else {
-                            window.location.href = '/billing?payment=success';
-                        }
-                        return true;
+                const data = await apiFetch<any>(`/api/v1/billing/subscription?org_id=${orgId}`);
+                if (data.plan === targetPlan && data.status === 'active') {
+                    if (onSuccess) {
+                        onSuccess();
+                    } else {
+                        window.location.href = '/billing?payment=success';
                     }
                 }
-            } catch (err) {
+            } catch (err: any) {
                 console.error('Polling error:', err);
             }
 
@@ -112,11 +110,19 @@ export default function UpgradeModal({ plan, onClose, onSuccess }: UpgradeModalP
         setError(null);
 
         try {
+            console.log('Starting upgrade flow for plan:', plan);
             const supabase = createClient();
             const { data: { user } } = await supabase.auth.getUser();
 
             if (!user) {
                 throw new Error('You must be logged in to upgrade');
+            }
+
+            const email = user.email;
+            console.log('User captured:', { id: user.id, email: email });
+
+            if (!email || !email.includes('@')) {
+                throw new Error(`Invalid email address (${email || 'missing'}). Please ensure your account has a valid email before upgrading.`);
             }
 
             // 1. Try finding org where user is a member (org_members)
@@ -127,6 +133,7 @@ export default function UpgradeModal({ plan, onClose, onSuccess }: UpgradeModalP
                 .maybeSingle();
 
             let org_id = orgMember?.org_id;
+            console.log('Org member lookup result:', org_id);
 
             // 2. Try legacy team_members if not found
             if (!org_id) {
@@ -136,6 +143,7 @@ export default function UpgradeModal({ plan, onClose, onSuccess }: UpgradeModalP
                     .eq('user_id', user.id)
                     .maybeSingle();
                 org_id = teamMember?.org_id;
+                console.log('Team member lookup (legacy) result:', org_id);
             }
 
             // 3. Check if user is an owner of any organization
@@ -147,29 +155,22 @@ export default function UpgradeModal({ plan, onClose, onSuccess }: UpgradeModalP
                     .limit(1)
                     .maybeSingle();
                 org_id = ownedOrg?.id;
+                console.log('Owned org lookup result:', org_id);
             }
 
             if (!org_id) {
-                // 4. Frictionless Fallback: Auto-provision a default org
+                console.log('No org found, attempting auto-provisioning...');
+                // 4. Fallback: Auto-provision a default org
                 try {
-                    const { data: { session } } = await supabase.auth.getSession();
-                    const res = await fetch('/api/v1/billing/ensure-org', {
+                    const headers = await getAuthHeaders();
+                    const data = await apiFetch<any>('/api/v1/billing/ensure-org', {
                         method: 'POST',
-                        headers: {
-                            'Authorization': `Bearer ${session?.access_token}`,
-                            'Content-Type': 'application/json'
-                        }
+                        headers
                     });
-                    if (res.ok) {
-                        const data = await res.json();
-                        org_id = data.org_id;
-                        console.info('Auto-provisioned default organization:', org_id);
-                    } else {
-                        const errorData = await res.json();
-                        console.error('Organization verification failed:', errorData.detail || res.statusText);
-                    }
-                } catch (err) {
-                    console.error('Failed to verify/provision organization (network/exception):', err);
+                    org_id = data.org_id;
+                    console.info('Auto-provisioned default organization:', org_id);
+                } catch (err: any) {
+                    console.error('Failed to verify/provision organization:', err.message);
                 }
             }
 
@@ -177,16 +178,12 @@ export default function UpgradeModal({ plan, onClose, onSuccess }: UpgradeModalP
                 throw new Error('No organization found for your account. Please create one first or contact support.');
             }
 
-            const email = user.email;
-
             // Call backend to initialize Paystack transaction
-            const { data: { session } } = await supabase.auth.getSession();
-            const response = await fetch('/api/v1/billing/upgrade', {
+            console.log('Calling backend upgrade endpoint:', { plan, email, org_id });
+            const headers = await getAuthHeaders();
+            const data = await apiFetch<any>('/api/v1/billing/upgrade', {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${session?.access_token}`
-                },
+                headers,
                 body: JSON.stringify({
                     plan: plan,
                     email: email,
@@ -195,43 +192,53 @@ export default function UpgradeModal({ plan, onClose, onSuccess }: UpgradeModalP
                 })
             });
 
-            let data;
-            const contentType = response.headers.get("content-type");
-            if (contentType && contentType.indexOf("application/json") !== -1) {
-                data = await response.json();
-            } else {
-                const text = await response.text();
-                console.error("Non-JSON response:", text);
-                throw new Error(text || "Server error");
-            }
-
-            if (!response.ok) {
-                throw new Error(data?.detail || 'Failed to initialize payment');
-            }
+            console.log('Backend upgrade data received:', data);
 
             // Initialize Paystack Popup
             const paystackKey = process.env.NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY;
-            const finalAmount = Math.round(data.amount_ghs || (planDetails.price * 15));
-
-            console.log('Initializing Paystack Pop with:', {
-                keyExists: !!paystackKey,
-                email: email,
-                amount: finalAmount,
-                currency: 'GHS',
-                ref: data.reference
-            });
 
             if (!paystackKey) {
                 throw new Error('Payment configuration missing: Public key not found.');
             }
 
-            const handler = (window as any).PaystackPop.setup({
+            if (typeof (window as any).PaystackPop === 'undefined') {
+                console.error('PaystackPop is undefined at runtime');
+                throw new Error('Payment gateway library not loaded yet. Please wait a moment or refresh the page.');
+            }
+
+            console.log('Setting up Paystack handler with payload...');
+
+            // The amount from the backend (data.amount_ghs) is ALREADY in subunits (GHS kobo).
+            // We should use it directly. The fallback also assumes price is in cents.
+            const amountInSubunits = data.amount_ghs || (planDetails.price * 15);
+
+            const paystackOptions: any = {
                 key: paystackKey,
                 email: email,
-                amount: finalAmount,
-                currency: 'GHS', // Must be GHS for Paystack account
-                ref: data.reference,
-                metadata: {
+                amount: amountInSubunits, 
+                currency: 'GHS',
+                onClose: () => {
+                    console.log('Paystack popup closed by user');
+                    setLoading(false);
+                },
+                callback: (response: any) => {
+                    console.log('Payment successful callback:', response);
+                    setLoading(false);
+                    pollSubscriptionStatus(org_id, plan);
+                }
+            };
+
+            // If we have an access_code, add it to options
+            if (data.access_code) {
+                console.log('Using access_code with explicit amount:', {
+                    access_code: data.access_code,
+                    amount: amountInSubunits
+                });
+                paystackOptions.access_code = data.access_code;
+            } else {
+                console.warn('No access_code found, using full manual initialization');
+                paystackOptions.ref = data.reference;
+                paystackOptions.metadata = {
                     org_id: org_id,
                     plan: plan,
                     custom_fields: [
@@ -241,25 +248,18 @@ export default function UpgradeModal({ plan, onClose, onSuccess }: UpgradeModalP
                             value: planDetails.name
                         }
                     ]
-                },
-                callback: function (response: any) {
-                    // Payment successful
-                    console.log('Payment successful:', response);
-                    setLoading(false);
+                };
+            }
 
-                    // Start polling for backend update via webhook
-                    pollSubscriptionStatus(org_id, plan);
-                },
-                onClose: function () {
-                    // User closed popup
-                    setLoading(false);
-                }
-            });
+            console.log('Final Paystack Options:', paystackOptions);
+            const handler = (window as any).PaystackPop.setup(paystackOptions);
 
+            console.log('Opening Paystack iframe...');
             handler.openIframe();
+            console.log('openIframe called!');
 
         } catch (err: any) {
-            console.error('Upgrade error:', err);
+            console.error('Upgrade flow caught error:', err);
             setError(err.message || 'Failed to process upgrade. Please try again.');
             setLoading(false);
         }

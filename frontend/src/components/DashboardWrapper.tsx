@@ -6,7 +6,7 @@ import { useRunStore } from '@/store/useRunStore';
 import Sidebar from './Sidebar';
 import TopBar from './TopBar';
 import AICoFounderPanel from './builder/AICoFounderPanel';
-import { X } from 'lucide-react';
+import { X, ChevronLeft, ChevronRight } from 'lucide-react';
 
 export default function DashboardWrapper({ children }: { children: React.ReactNode }) {
     const startPolling = useRunStore((state) => state.startPolling);
@@ -16,13 +16,14 @@ export default function DashboardWrapper({ children }: { children: React.ReactNo
     const runId = useRunStore((state) => state.runId);
 
     const pathname = usePathname();
-    const isLandingPage = ['/', '/product', '/how-it-works', '/pricing', '/resources', '/login', '/signup', '/mvp'].some(p =>
+    const isLandingPage = ['/', '/product', '/how-it-works', '/pricing', '/resources', '/login', '/signup', '/mvp', '/mock-preview'].some(p =>
         p === '/' ? pathname === '/' : pathname === p || pathname?.startsWith(p + '/')
     );
+    const [isSidebarCollapsed, setIsSidebarCollapsed] = React.useState(false);
 
     useEffect(() => {
         if (!isLandingPage) {
-            startPolling();
+            return startPolling();
         }
     }, [startPolling, isLandingPage]);
 
@@ -49,20 +50,26 @@ export default function DashboardWrapper({ children }: { children: React.ReactNo
             }} />
 
             {/* Left Sidebar */}
-            <div className="w-72 glass-panel shrink-0 z-10 border-r border-white/5">
-                <Sidebar currentStage={runState === "INIT" ? "IDEA" : runState} />
+            <div className={`${isSidebarCollapsed ? 'w-20' : 'w-72'} transition-all duration-300 glass-panel shrink-0 z-10 border-r border-white/5 relative group`}>
+                <Sidebar 
+                    currentStage={runState === "INIT" ? "IDEA" : runState} 
+                    isCollapsed={isSidebarCollapsed} 
+                    onToggle={() => setIsSidebarCollapsed(!isSidebarCollapsed)} 
+                />
             </div>
 
             {/* Main Content Area */}
             <div className="flex-1 flex flex-col min-w-0 z-10 relative">
                 {/* Premium Top Bar */}
-                <header className="h-16 border-b border-white/8 bg-black/40 backdrop-blur-xl shrink-0 sticky top-0 z-20">
-                    <div className="absolute inset-0 bg-gradient-to-b from-white/[0.05] to-transparent pointer-events-none" />
-                    <TopBar />
-                </header>
+                {pathname !== '/deploy' && (
+                    <header className="h-16 border-b border-white/8 bg-black/40 backdrop-blur-xl shrink-0 sticky top-0 z-20">
+                        <div className="absolute inset-0 bg-gradient-to-b from-white/[0.05] to-transparent pointer-events-none" />
+                        <TopBar />
+                    </header>
+                )}
 
                 {/* Main Viewport with Enhanced Padding */}
-                <main className="flex-1 overflow-y-auto p-10 bg-transparent scroll-smooth relative">
+                <main className={`flex-1 overflow-y-auto ${pathname === '/deploy' ? 'p-0' : 'p-10'} bg-transparent scroll-smooth relative`}>
                     <div className="max-w-[1600px] mx-auto h-full animate-fade-in">
                         {children}
                     </div>
@@ -78,7 +85,9 @@ export default function DashboardWrapper({ children }: { children: React.ReactNo
                 >
                     <X size={20} />
                 </button>
-                <AICoFounderPanel projectId={runId} />
+                {runId && runId !== "CONNECTING..." && (
+                    <AICoFounderPanel projectId={runId} />
+                )}
             </div>
 
             {/* Backdrop for mobile or global focus */}

@@ -112,8 +112,8 @@ async def update_project_stage(
         raise HTTPException(status_code=500, detail="Failed to update stage")
     return updated
 
-@router.get("/projects", response_model=List[ProjectResponse])
-async def list_projects(
+@router.get("/user-projects", response_model=List[ProjectResponse])
+async def list_user_projects(
     current_user: dict = Depends(get_current_user)
 ):
     """Lists all startup projects for the authenticated user."""

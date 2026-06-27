@@ -1,0 +1,22 @@
+:root {
+  /* Primary colors */
+  --color-bg-primary: #09090b; /* deep dark */
+  --color-bg-secondary: #0c0c0e; /* slightly lighter */
+  --color-surface: rgba(255, 255, 255, 0.02); /* glass surface */
+  --color-accent-emerald: #10b981;
+  --color-accent-amber: #f59e0b;
+  --color-accent-red: #ef4444;
+  --color-muted: #525252;
+  --color-muted-light: #a1a1aa;
+  --color-muted-dark: #27272a;
+  --color-white: #ffffff;
+  /* Gradients */
+  --gradient-primary: linear-gradient(135deg, #0f0f1a, #151525);
+  /* Selection */
+  --color-selection-bg: rgba(59, 130, 246, 0.2);
+}
+
+/* Global reset for selection */
+::selection {
+  background: var(--color-selection-bg);
+}

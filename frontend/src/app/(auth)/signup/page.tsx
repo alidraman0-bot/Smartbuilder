@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
 import { Mail, Lock, Eye, EyeOff, Loader2, Shield, CheckCircle, RotateCcw, User, Briefcase } from 'lucide-react';
 import LoginLogo from '@/components/auth/LoginLogo';
-import { createClient } from '@/utils/supabase/client';
+import { createClient } from '@/lib/supabase/browser';
 
 export default function SignupPage() {
     const [name, setName] = useState('');

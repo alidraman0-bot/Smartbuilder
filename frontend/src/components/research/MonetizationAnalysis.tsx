@@ -3,11 +3,11 @@ import { DollarSign, Landmark, Wallet, Activity } from 'lucide-react';
 import { MonetizationAnalysis as MonetizationAnalysisType } from '@/types/research';
 
 interface MonetizationAnalysisProps {
-    analysis: MonetizationAnalysisType;
+    monetization: MonetizationAnalysisType;
 }
 
-export default function MonetizationAnalysis({ analysis }: MonetizationAnalysisProps) {
-    const { revenue_models, pricing_benchmarks, unit_economics } = analysis;
+export default function MonetizationAnalysis({ monetization }: MonetizationAnalysisProps) {
+    const { revenue_models, pricing_benchmarks, unit_economics } = monetization;
 
     return (
         <section className="space-y-8">

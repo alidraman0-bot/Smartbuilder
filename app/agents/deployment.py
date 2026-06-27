@@ -16,8 +16,8 @@ class DeploymentAgent(BaseAgent):
         Produce a live, reachable system.
         """
         build_artifacts = context.get("build_artifacts")
-        run_id = context.get("run_id", f"RUN-{uuid.uuid4().hex[:8]}")
-        build_id = context.get("build_id", f"BUILD-{uuid.uuid4().hex[:8]}")
+        run_id = context.get("run_id", f"RUN-{str(uuid.uuid4().hex)[:8]}")
+        build_id = context.get("build_id", f"BUILD-{str(uuid.uuid4().hex)[:8]}")
 
         if not build_artifacts:
             raise ValueError("Build artifacts required for Deployment")
@@ -32,7 +32,7 @@ class DeploymentAgent(BaseAgent):
             # So we need to wait or mock the final result for this agent's return.
             
             # For the sake of the deterministic contract execution:
-            url = f"https://{run_id[:8].lower()}.smartbuilder.preview"
+            url = f"https://{str(run_id)[:8].lower()}.smartbuilder.preview"
             
             output = {
                 "url": url,

@@ -1,6 +1,7 @@
 
 import { create } from 'zustand';
 import { getAuthHeaders } from '@/utils/supabase/auth';
+import { apiFetch } from '@/lib/apiClient';
 
 export interface DashboardStats {
     active_projects: number;
@@ -40,7 +41,7 @@ interface DashboardState {
     fetchDashboardData: () => Promise<void>;
 }
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
+// Use centralized apiClient to communicate directly with backend
 
 export const useDashboardStore = create<DashboardState>((set) => ({
     stats: null,
@@ -54,12 +55,9 @@ export const useDashboardStore = create<DashboardState>((set) => ({
         set({ isLoading: true, error: null });
         try {
             const headers = await getAuthHeaders();
-            const response = await fetch(`${API_BASE_URL}/api/v1/analytics/dashboard`, {
+            const data = await apiFetch<any>('/api/v1/analytics/dashboard', {
                 headers
             });
-            if (!response.ok) throw new Error('Failed to fetch dashboard data');
-
-            const data = await response.json();
             set({
                 stats: {
                     active_projects: data.active_projects,

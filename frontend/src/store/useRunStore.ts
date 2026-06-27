@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { getAuthHeaders } from '@/utils/supabase/auth';
+import { apiFetch } from '@/lib/apiClient';
 
 interface PipelineStage {
     id: string;
@@ -158,36 +159,25 @@ export const useRunStore = create<RunState>((set) => ({
         try {
             const runId = useRunStore.getState().runId;
             const headers = await getAuthHeaders();
-            const res = await fetch('/api/v1/deploy/start', {
+            const deployment = await apiFetch<any>('/api/v1/deploy/start', {
                 method: 'POST',
                 headers,
                 body: JSON.stringify({ run_id: runId, build_id: buildId })
             });
 
-            if (res.ok) {
-                const deployment = await res.json();
-                set((state) => ({
-                    ...state,
-                    deployment_id: deployment.deployment_id,
-                    deployment_status: deployment.status,
-                    deployment_version: deployment.version,
-                    deployment_stages: deployment.stages,
-                    deployment_logs: deployment.logs,
-                    deployment_errors: deployment.errors,
-                    deployment_url: deployment.url
-                }));
+            set((state) => ({
+                ...state,
+                deployment_id: deployment.deployment_id,
+                deployment_status: deployment.status,
+                deployment_version: deployment.version,
+                deployment_stages: deployment.stages,
+                deployment_logs: deployment.logs,
+                deployment_errors: deployment.errors,
+                deployment_url: deployment.url
+            }));
 
-                // Start polling deployment status
-                useRunStore.getState().pollDeploymentStatus(deployment.deployment_id);
-            } else {
-                const error = await res.json();
-                console.error('Deployment failed:', error);
-                set((state) => ({
-                    ...state,
-                    deployment_status: "FAILED",
-                    deployment_errors: [error.detail || 'Deployment failed']
-                }));
-            }
+            // Start polling deployment status
+            useRunStore.getState().pollDeploymentStatus(deployment.deployment_id);
         } catch (err) {
             console.error('Failed to start deployment:', err);
             set((state) => ({
@@ -202,29 +192,21 @@ export const useRunStore = create<RunState>((set) => ({
         const fetchStatus = async () => {
             try {
                 const headers = await getAuthHeaders();
-                const res = await fetch(`/api/v1/deploy/${deploymentId}/status`, {
+                const deployment = await apiFetch<any>(`/api/v1/deploy/${deploymentId}/status`, {
                     headers
                 });
-                if (res.ok) {
-                    const contentType = res.headers.get("content-type");
-                    if (!contentType || !contentType.includes("application/json")) {
-                        console.error("Expected JSON deployment status, but got:", contentType);
-                        return false;
-                    }
-                    const deployment = await res.json();
-                    set((state) => ({
-                        ...state,
-                        deployment_status: deployment.status,
-                        deployment_stages: deployment.stages,
-                        deployment_logs: deployment.logs,
-                        deployment_errors: deployment.errors,
-                        deployment_url: deployment.url
-                    }));
+                set((state) => ({
+                    ...state,
+                    deployment_status: deployment.status,
+                    deployment_stages: deployment.stages,
+                    deployment_logs: deployment.logs,
+                    deployment_errors: deployment.errors,
+                    deployment_url: deployment.url
+                }));
 
-                    // Stop polling if deployment is complete or failed
-                    if (deployment.status === 'LIVE' || deployment.status === 'FAILED' || deployment.status === 'ROLLED_BACK') {
-                        return true; // Signal to stop polling
-                    }
+                // Stop polling if deployment is complete or failed
+                if (deployment.status === 'LIVE' || deployment.status === 'FAILED' || deployment.status === 'ROLLED_BACK') {
+                    return true; // Signal to stop polling
                 }
             } catch (err) {
                 console.error('Failed to fetch deployment status:', err);
@@ -238,33 +220,26 @@ export const useRunStore = create<RunState>((set) => ({
             if (shouldStop) {
                 clearInterval(interval);
             }
-            if (shouldStop) {
-                clearInterval(interval);
-            }
-        }, 3000); // Relaxed polling for performance
+        }, 3000);
+
+        return () => clearInterval(interval);
     },
 
     rollbackDeployment: async (deploymentId: string, reason: string) => {
         try {
             const headers = await getAuthHeaders();
-            const res = await fetch(`/api/v1/deploy/${deploymentId}/rollback`, {
+            const result = await apiFetch<any>(`/api/v1/deploy/${deploymentId}/rollback`, {
                 method: 'POST',
                 headers,
                 body: JSON.stringify({ reason })
             });
 
-            if (res.ok) {
-                const result = await res.json();
-                set((state) => ({
-                    ...state,
-                    deployment_status: "ROLLED_BACK",
-                    deployment_url: result.previous_url,
-                    deployment_version: result.previous_version
-                }));
-            } else {
-                const error = await res.json();
-                console.error('Rollback failed:', error);
-            }
+            set((state) => ({
+                ...state,
+                deployment_status: "ROLLED_BACK",
+                deployment_url: result.previous_url,
+                deployment_version: result.previous_version
+            }));
         } catch (err) {
             console.error('Failed to rollback deployment:', err);
         }
@@ -275,27 +250,10 @@ export const useRunStore = create<RunState>((set) => ({
         const fetchData = async () => {
             try {
                 const headers = await getAuthHeaders();
-                const res = await fetch('/api/v1/status', {
+                const data = await apiFetch<any>('/api/v1/status', {
                     headers
                 });
 
-                // Robustness check: Ensure response is OK and is JSON
-                if (!res.ok) {
-                    console.warn(`Status fetch failed with status ${res.status}`);
-                    set((state) => ({ ...state, health: "OFFLINE" }));
-                    lastPayload = "";
-                    return;
-                }
-
-                const contentType = res.headers.get("content-type");
-                if (!contentType || !contentType.includes("application/json")) {
-                    console.error("Expected JSON status response, but got:", contentType);
-                    set((state) => ({ ...state, health: "OFFLINE" }));
-                    lastPayload = "";
-                    return;
-                }
-
-                const data = await res.json();
                 const currentPayload = JSON.stringify(data);
 
                 // Only update if data changed to save re-renders
@@ -311,7 +269,7 @@ export const useRunStore = create<RunState>((set) => ({
         };
 
         fetchData();
-        const interval = setInterval(fetchData, 5000); // Relaxed to 5s to reduce load
+        const interval = setInterval(fetchData, 15000); // Relaxed to 15s to reduce load
         return () => clearInterval(interval);
     },
 
@@ -319,26 +277,22 @@ export const useRunStore = create<RunState>((set) => ({
         const fetchMonitorData = async () => {
             try {
                 const headers = await getAuthHeaders();
-                const res = await fetch(`/api/v1/monitor/${deploymentId}/status`, {
+                const metrics = await apiFetch<any>(`/api/v1/monitor/${deploymentId}/status`, {
                     headers
                 });
-                const logsRes = await fetch(`/api/v1/monitor/${deploymentId}/logs`, {
+                const logs = await apiFetch<any>(`/api/v1/monitor/${deploymentId}/logs`, {
                     headers
                 });
 
-                if (res.ok && logsRes.ok) {
-                    const metrics = await res.json();
-                    const logs = await logsRes.json();
-                    set((state) => ({
-                        ...state,
-                        monitoring_health: metrics.health_status,
-                        monitoring_metrics: metrics,
-                        monitoring_logs: logs
-                    }));
+                set((state) => ({
+                    ...state,
+                    monitoring_health: metrics.health_status,
+                    monitoring_metrics: metrics,
+                    monitoring_logs: logs
+                }));
 
-                    if (metrics.health_status === 'shutdown') {
-                        return true;
-                    }
+                if (metrics.health_status === 'shutdown') {
+                    return true;
                 }
             } catch (err) {
                 console.error('Failed to fetch monitoring data:', err);
@@ -350,7 +304,7 @@ export const useRunStore = create<RunState>((set) => ({
         const interval = setInterval(async () => {
             const shouldStop = await fetchMonitorData();
             if (shouldStop) clearInterval(interval);
-        }, 5000); // Relaxed to 5s
+        }, 5000);
         return () => clearInterval(interval);
     },
 
@@ -361,13 +315,10 @@ export const useRunStore = create<RunState>((set) => ({
     fetchExecutiveSummary: async (deploymentId: string) => {
         try {
             const headers = await getAuthHeaders();
-            const res = await fetch(`/api/v1/monitor/${deploymentId}/executive`, {
+            const summary = await apiFetch<any>(`/api/v1/monitor/${deploymentId}/executive`, {
                 headers
             });
-            if (res.ok) {
-                const summary = await res.json();
-                set((state) => ({ ...state, executive_summary: summary }));
-            }
+            set((state) => ({ ...state, executive_summary: summary }));
         } catch (err) {
             console.error('Failed to fetch executive summary:', err);
         }
@@ -376,13 +327,10 @@ export const useRunStore = create<RunState>((set) => ({
     fetchComplianceReport: async () => {
         try {
             const headers = await getAuthHeaders();
-            const res = await fetch(`/api/v1/compliance/readiness`, {
+            const report = await apiFetch<any>(`/api/v1/compliance/readiness`, {
                 headers
             });
-            if (res.ok) {
-                const report = await res.json();
-                set((state) => ({ ...state, compliance_report: report }));
-            }
+            set((state) => ({ ...state, compliance_report: report }));
         } catch (err) {
             console.error('Failed to fetch compliance report:', err);
         }
@@ -391,16 +339,14 @@ export const useRunStore = create<RunState>((set) => ({
     triggerMonitorAction: async (deploymentId: string, action: string) => {
         try {
             const headers = await getAuthHeaders();
-            const res = await fetch(`/api/v1/monitor/${deploymentId}/action`, {
+            await apiFetch(`/api/v1/monitor/${deploymentId}/action`, {
                 method: 'POST',
                 headers,
                 body: JSON.stringify({ action })
             });
-            if (res.ok) {
-                console.log(`Action ${action} triggered successfully`);
-                if (action === 'shutdown') {
-                    set((state) => ({ ...state, monitoring_health: 'critical' }));
-                }
+            console.log(`Action ${action} triggered successfully`);
+            if (action === 'shutdown') {
+                set((state) => ({ ...state, monitoring_health: 'critical' }));
             }
         } catch (err) {
             console.error(`Failed to trigger monitor action ${action}:`, err);

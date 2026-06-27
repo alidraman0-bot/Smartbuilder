@@ -1,20 +1,23 @@
+from app.core.http_client import http_client
+from app.utils.circuit_breaker import breaker
+from app.core.config import settings
 import logging
 import asyncio
-import httpx
 import time
+import httpx
 from typing import List, Dict, Any, Optional
 import xml.etree.ElementTree as ET
-from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
 class SignalService:
     def __init__(self):
-        self.http_client = httpx.AsyncClient(timeout=10.0)
+        self.client = http_client
         self._signal_cache = None
         self._cache_timestamp = 0
         self._cache_ttl = 600 # 10 minutes
 
+    @breaker
     async def fetch_signals(self, force_refresh: bool = False) -> List[Dict[str, Any]]:
         """
         Fetch, normalize, and rank signals from Google News, Hacker News, Reddit, and RSS.
@@ -93,13 +96,14 @@ class SignalService:
         }
         
         try:
-            response = await self.http_client.get(url, params=params)
+            response = await self.client.get(url, params=params)
             response.raise_for_status()
             data = response.json()
             
             signals = []
-            if "news_results" in data:
-                for item in data["news_results"][:5]:
+            news_results = data.get("news_results")
+            if isinstance(news_results, list):
+                for item in news_results[:5]:
                     signals.append({
                         "source": f"Google News ({item.get('source', {}).get('name', 'Unknown')})",
                         "pattern": item.get("title", "") + ": " + item.get("snippet", ""),
@@ -119,15 +123,15 @@ class SignalService:
         
         try:
             # Get top stories IDs
-            resp = await self.http_client.get(f"{base_url}/topstories.json")
+            resp = await self.client.get(f"{base_url}/topstories.json")
             resp.raise_for_status()
             story_ids = resp.json()[:8] # Fetch top 8
             
             # Fetch details concurrently
             async def get_item(sid):
                 try:
-                    res = await self.http_client.get(f"{base_url}/item/{sid}.json")
-                    return res.json() if res.status_code == 200 else None
+                    res = await self.client.get(f"{base_url}/item/{sid}.json")
+                    return res # SafeHTTPClient returns json() directly if success
                 except Exception:
                     return None
 
@@ -167,7 +171,7 @@ class SignalService:
             data = {"grant_type": "client_credentials"}
             headers = {"User-Agent": settings.REDDIT_USER_AGENT}
             
-            token_resp = await self.http_client.post(
+            token_resp = await self.client.post( # Use the underlying httpx client for OAuth POST
                 "https://www.reddit.com/api/v1/access_token",
                 auth=auth,
                 data=data,
@@ -181,16 +185,17 @@ class SignalService:
             token = token_resp.json().get("access_token")
             headers["Authorization"] = f"Bearer {token}"
             
-            # 2. Fetch from subreddits
-            for sub in subreddits:
+            # 2. Fetch from subreddits in parallel
+            async def fetch_sub(sub):
                 try:
                     url = f"https://oauth.reddit.com/r/{sub}/top?t=week&limit=5"
-                    resp = await self.http_client.get(url, headers=headers)
+                    resp = await self.client.get(url, headers=headers)
                     if resp.status_code == 200:
                         posts = resp.json().get("data", {}).get("children", [])
+                        sub_signals = []
                         for post in posts:
                             data = post.get("data", {})
-                            signals.append({
+                            sub_signals.append({
                                 "source": f"Reddit (r/{sub})",
                                 "category": sub,
                                 "pattern": f"{data.get('title')}: {data.get('selftext', '')[:200]}...",
@@ -198,8 +203,14 @@ class SignalService:
                                 "frequency": "High" if data.get("ups", 0) > 100 else "Medium",
                                 "urgency": "High" if "help" in data.get("title", "").lower() or "struggle" in data.get("selftext", "").lower() else "Medium"
                             })
+                        return sub_signals
                 except Exception as sub_e:
                     logger.error(f"Failed to fetch r/{sub}: {sub_e}")
+                return []
+
+            sub_results = await asyncio.gather(*[fetch_sub(sub) for sub in subreddits])
+            for res in sub_results:
+                signals.extend(res)
                     
             return signals if signals else await self._get_mock_reddit_signals()
             
@@ -215,31 +226,39 @@ class SignalService:
         ]
         signals = []
         
-        for name, url in feeds:
+        async def fetch_feed(name, url):
             try:
-                resp = await self.http_client.get(url)
+                resp = await self.client.get(url)
                 if resp.status_code == 200:
                     root = ET.fromstring(resp.text)
                     # Handle both RSS 2.0 and Atom
                     items = root.findall(".//item") or root.findall(".//{http://www.w3.org/2005/Atom}entry")
-                    for item in items[:5]:
-                        title = item.find("title") or item.find("{http://www.w3.org/2005/Atom}title")
-                        summary = item.find("description") or item.find("{http://www.w3.org/2005/Atom}summary")
-                        
-                        title_text = title.text if title is not None else "Untitled"
-                        summary_text = summary.text if summary is not None else ""
-                        
-                        signals.append({
-                            "source": name,
-                            "pattern": f"{title_text}: {summary_text[:200]}...",
-                            "audience": "Builders & Early Adopters",
-                            "industry": "Tech / SaaS",
-                            "frequency": "High",
-                            "urgency": "Medium"
-                        })
+                    feed_signals = []
+                    if isinstance(items, list):
+                        for item in items[:5]:
+                            title = item.find("title") or item.find("{http://www.w3.org/2005/Atom}title")
+                            summary = item.find("description") or item.find("{http://www.w3.org/2005/Atom}summary")
+                            
+                            title_text = title.text if title is not None else "Untitled"
+                            summary_text = summary.text if summary is not None else ""
+                            
+                            feed_signals.append({
+                                "source": name,
+                                "pattern": f"{title_text}: {summary_text[:200]}...",
+                                "audience": "Builders & Early Adopters",
+                                "industry": "Tech / SaaS",
+                                "frequency": "High",
+                                "urgency": "Medium"
+                            })
+                    return feed_signals
             except Exception as e:
                 logger.error(f"Failed to fetch {name} RSS: {e}")
+            return []
                 
+        feed_results = await asyncio.gather(*[fetch_feed(name, url) for name, url in feeds])
+        for res in feed_results:
+            signals.extend(res)
+            
         return signals
 
     async def _get_mock_reddit_signals(self) -> List[Dict[str, Any]]:
@@ -314,14 +333,15 @@ class SignalService:
         }
         
         try:
-            response = await self.http_client.get(url, params=params)
+            response = await self.client.get(url, params=params)
             response.raise_for_status()
             data = response.json()
             
             results = []
             # Extract organic rankings as "demand" signals
-            if "organic_results" in data:
-                for res in data["organic_results"][:5]:
+            organic_results = data.get("organic_results")
+            if isinstance(organic_results, list):
+                for res in organic_results[:5]:
                     results.append({
                         "title": res.get("title"),
                         "snippet": res.get("snippet"),
@@ -337,7 +357,7 @@ class SignalService:
         # Example: GDP Growth (NY.GDP.MKTP.KD.ZG) for World
         url = "https://api.worldbank.org/v2/country/WLD/indicator/NY.GDP.MKTP.KD.ZG?format=json&per_page=5"
         try:
-            resp = await self.http_client.get(url)
+            resp = await self.client.get(url)
             if resp.status_code == 200:
                 data = resp.json()
                 if len(data) > 1:
@@ -362,7 +382,7 @@ class SignalService:
         }
         
         try:
-            response = await self.http_client.get(url, params=params)
+            response = await self.client.get(url, params=params)
             response.raise_for_status()
             data = response.json()
             

@@ -6,47 +6,63 @@ import { usePathname } from 'next/navigation';
 import {
     LayoutDashboard, Lightbulb, Search, Code, Rocket,
     Layers, Lock, Share2, Activity, Sparkles, Zap, TrendingUp, Library, History, CreditCard,
-    FileSpreadsheet, Trophy
+    FileSpreadsheet, Trophy, ChevronLeft, ChevronRight
 } from 'lucide-react';
+import { useRunStore } from '@/store/useRunStore';
 
-const Sidebar = ({ currentStage = "MVP_BUILD" }: { currentStage?: string }) => {
+const Sidebar = ({ currentStage = "MVP_BUILD", isCollapsed = false, onToggle }: { currentStage?: string; isCollapsed?: boolean; onToggle?: () => void }) => {
     const pathname = usePathname();
+    const isAiCofounderOpen = useRunStore((state) => state.isAiCofounderOpen);
+    const toggleAiCofounder = useRunStore((state) => state.toggleAiCofounder);
 
     return (
         <div className="flex flex-col h-full bg-transparent relative">
             {/* Premium Header with Gradient */}
-            <div className="h-20 flex items-center px-6 border-b border-white/8 relative">
+            <div className={`h-20 flex items-center ${isCollapsed ? 'justify-center px-0' : 'px-6'} border-b border-white/8 relative`}>
                 <div className="absolute inset-0 bg-gradient-to-b from-white/[0.03] to-transparent pointer-events-none" />
                 <Link href="/" className="flex items-center space-x-3 group cursor-pointer relative z-10">
-                    <div className="relative">
+                    <div className="relative flex-shrink-0">
                         <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500 via-purple-500 to-pink-500 flex items-center justify-center shadow-lg shadow-indigo-500/30 group-hover:scale-110 transition-all duration-300 group-hover:shadow-indigo-500/50">
                             <Sparkles size={20} className="text-white" strokeWidth={2.5} />
                         </div>
                         <div className="absolute -top-0.5 -right-0.5 w-3 h-3 bg-emerald-400 rounded-full border-2 border-black animate-pulse shadow-lg shadow-emerald-400/50" />
                     </div>
-                    <div className="flex flex-col">
-                        <span className="text-base font-bold tracking-tight text-white group-hover:text-transparent group-hover:bg-clip-text group-hover:bg-gradient-to-r group-hover:from-indigo-400 group-hover:to-purple-400 transition-all duration-300">
-                            Smartbuilder
-                        </span>
-                        <span className="text-[10px] font-mono font-semibold text-indigo-400/70 uppercase tracking-wider">AI Platform</span>
-                    </div>
+                    {!isCollapsed && (
+                        <div className="flex flex-col overflow-hidden">
+                            <span className="text-base font-bold tracking-tight text-white group-hover:text-transparent group-hover:bg-clip-text group-hover:bg-gradient-to-r group-hover:from-indigo-400 group-hover:to-purple-400 transition-all duration-300 whitespace-nowrap">
+                                Smartbuilder
+                            </span>
+                            <span className="text-[10px] font-mono font-semibold text-indigo-400/70 uppercase tracking-wider whitespace-nowrap">AI Platform</span>
+                        </div>
+                    )}
                 </Link>
+                {onToggle && (
+                    <button 
+                        onClick={onToggle}
+                        className={`absolute top-7 ${isCollapsed ? '-right-3' : '-right-3'} w-6 h-6 bg-zinc-800 rounded-full border border-white/10 flex items-center justify-center text-zinc-400 hover:text-white z-50`}
+                    >
+                        {isCollapsed ? <ChevronRight size={14} /> : <ChevronLeft size={14} />}
+                    </button>
+                )}
             </div>
 
             {/* Enhanced Navigation */}
-            <nav className="flex-1 py-6 px-3 space-y-8 overflow-y-auto scrollbar-thin scrollbar-thumb-indigo-500/20 scrollbar-track-transparent">
+            <nav className={`flex-1 py-6 ${isCollapsed ? 'px-2' : 'px-3'} space-y-8 overflow-y-auto scrollbar-thin scrollbar-thumb-indigo-500/20 scrollbar-track-transparent`}>
                 {/* Portfolio Section */}
                 <section className="space-y-2">
-                    <div className="flex items-center justify-between px-4 mb-3">
-                        <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-[0.25em]">Portfolio</span>
-                        <TrendingUp size={12} className="text-zinc-600" />
-                    </div>
+                    {!isCollapsed && (
+                        <div className="flex items-center justify-between px-4 mb-3">
+                            <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-[0.25em]">Portfolio</span>
+                            <TrendingUp size={12} className="text-zinc-600" />
+                        </div>
+                    )}
                     <NavLink
                         href="/overview"
                         icon={<LayoutDashboard size={18} />}
                         label="Executive Overview"
                         isActive={pathname === '/overview'}
                         badge={null}
+                        isCollapsed={isCollapsed}
                     />
 
                     <NavLink
@@ -55,6 +71,7 @@ const Sidebar = ({ currentStage = "MVP_BUILD" }: { currentStage?: string }) => {
                         label="Project Memory"
                         isActive={pathname === '/memory'}
                         badge={null}
+                        isCollapsed={isCollapsed}
                     />
                     <NavLink
                         href="/blueprint"
@@ -63,6 +80,7 @@ const Sidebar = ({ currentStage = "MVP_BUILD" }: { currentStage?: string }) => {
                         isActive={pathname === '/blueprint'}
                         badge={null}
                         color="indigo"
+                        isCollapsed={isCollapsed}
                     />
                     <NavLink
                         href="/opportunity"
@@ -71,49 +89,62 @@ const Sidebar = ({ currentStage = "MVP_BUILD" }: { currentStage?: string }) => {
                         isActive={pathname === '/opportunity'}
                         badge={null}
                         color="amber"
+                        isCollapsed={isCollapsed}
                     />
                     <button
-                        onClick={() => useRunStore.getState().toggleAiCofounder()}
-                        className={`w-full relative flex items-center justify-between px-3 py-2.5 rounded-xl transition-all duration-300 group ${useRunStore.getState().isAiCofounderOpen
+                        onClick={() => toggleAiCofounder()}
+                        className={`w-full relative flex items-center ${isCollapsed ? 'justify-center' : 'justify-between'} px-3 py-2.5 rounded-xl transition-all duration-300 group ${isAiCofounderOpen
                             ? 'bg-indigo-500/10 border-indigo-500/30 border text-white shadow-lg shadow-indigo-500/20'
                             : 'text-zinc-400 hover:text-white hover:bg-white/5 border border-transparent'
                             }`}
+                        title={isCollapsed ? "AI Co-Founder" : undefined}
                     >
-                        <div className="flex items-center space-x-3 flex-1">
-                            <div className={`transition-transform duration-300 ${useRunStore.getState().isAiCofounderOpen ? 'scale-110' : 'group-hover:scale-105'}`}>
+                        <div className="flex items-center space-x-3 flex-1 overflow-hidden">
+                            <div className={`transition-transform duration-300 ${isAiCofounderOpen ? 'scale-110' : 'group-hover:scale-105'} ${isCollapsed ? 'mx-auto' : ''}`}>
                                 <Sparkles
                                     size={18}
-                                    className={useRunStore.getState().isAiCofounderOpen ? 'text-indigo-400' : 'text-zinc-500 group-hover:text-zinc-300'}
-                                    strokeWidth={useRunStore.getState().isAiCofounderOpen ? 2.5 : 2}
+                                    className={isAiCofounderOpen ? 'text-indigo-400' : 'text-zinc-500 group-hover:text-zinc-300'}
+                                    strokeWidth={isAiCofounderOpen ? 2.5 : 2}
                                 />
                             </div>
-                            <span className={`text-sm font-medium transition-colors ${useRunStore.getState().isAiCofounderOpen ? 'font-semibold' : 'font-medium'}`}>
-                                AI Co-Founder
-                            </span>
+                            {!isCollapsed && (
+                                <span className={`text-sm font-medium transition-colors ${isAiCofounderOpen ? 'font-semibold' : 'font-medium'} whitespace-nowrap`}>
+                                    AI Co-Founder
+                                </span>
+                            )}
                         </div>
-                        {useRunStore.getState().isAiCofounderOpen && (
-                            <div className="w-2 h-2 rounded-full bg-indigo-500 animate-pulse shadow-lg shadow-indigo-500/50" />
+                        {isAiCofounderOpen && !isCollapsed && (
+                            <div className="w-2 h-2 rounded-full bg-indigo-500 animate-pulse shadow-lg shadow-indigo-500/50 shrink-0" />
+                        )}
+                        {isAiCofounderOpen && isCollapsed && (
+                            <div className="absolute top-1 right-1 w-2 h-2 rounded-full bg-indigo-500 animate-pulse shadow-lg shadow-indigo-500/50" />
                         )}
                     </button>
                 </section>
 
                 {/* Pipeline Lifecycle Section */}
                 <section className="space-y-1.5">
-                    <div className="flex items-center justify-between px-4 mb-3">
-                        <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-[0.25em]">Pipeline Lifecycle</span>
-                        <Zap size={12} className="text-zinc-600" />
-                    </div>
+                    {!isCollapsed && (
+                        <div className="flex items-center justify-between px-4 mb-3">
+                            <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-[0.25em]">Pipeline Lifecycle</span>
+                            <Zap size={12} className="text-zinc-600" />
+                        </div>
+                    )}
 
                     <div className="relative px-2">
                         {/* Progress Indicator Line */}
-                        <div className="absolute left-6 top-0 bottom-0 w-0.5 bg-white/5" />
-                        <div
-                            className="absolute left-6 top-0 w-0.5 bg-gradient-to-b from-indigo-500 to-purple-500 transition-all duration-1000"
-                            style={{
-                                height: `${getPipelineProgress(currentStage)}%`,
-                                boxShadow: '0 0 8px rgba(99, 102, 241, 0.5)'
-                            }}
-                        />
+                        {!isCollapsed && (
+                            <>
+                                <div className="absolute left-6 top-0 bottom-0 w-0.5 bg-white/5" />
+                                <div
+                                    className="absolute left-6 top-0 w-0.5 bg-gradient-to-b from-indigo-500 to-purple-500 transition-all duration-1000"
+                                    style={{
+                                        height: `${getPipelineProgress(currentStage)}%`,
+                                        boxShadow: '0 0 8px rgba(99, 102, 241, 0.5)'
+                                    }}
+                                />
+                            </>
+                        )}
 
                         <div className="relative space-y-1">
                             <NavLink
@@ -124,6 +155,7 @@ const Sidebar = ({ currentStage = "MVP_BUILD" }: { currentStage?: string }) => {
                                 isActive={currentStage === 'INIT' || pathname === '/ideas'}
                                 color="amber"
                                 badge={currentStage === 'INIT' ? 'Active' : null}
+                                isCollapsed={isCollapsed}
                             />
                             <NavLink
                                 href="/research"
@@ -133,42 +165,57 @@ const Sidebar = ({ currentStage = "MVP_BUILD" }: { currentStage?: string }) => {
                                 isActive={currentStage === 'RESEARCH' || pathname === '/research'}
                                 color="blue"
                                 badge={currentStage === 'RESEARCH' ? 'Active' : null}
+                                isCollapsed={isCollapsed}
                             />
                             <NavLink
-                                href="/builder"
-                                icon={<Code size={18} />}
-                                label="Business Plan & PRD"
+                                href="/business-plan"
+                                icon={<FileSpreadsheet size={18} />}
+                                label="Business Plan"
                                 step="03"
-                                isActive={(currentStage === 'BUSINESS_PLAN' || currentStage === 'PRD') || pathname === '/builder'}
+                                isActive={currentStage === 'BUSINESS_PLAN' || pathname === '/business-plan'}
                                 color="indigo"
-                                badge={(currentStage === 'BUSINESS_PLAN' || currentStage === 'PRD') ? 'Active' : null}
+                                badge={currentStage === 'BUSINESS_PLAN' ? 'Active' : null}
+                                isCollapsed={isCollapsed}
+                            />
+                            <NavLink
+                                href="/prd-builder"
+                                icon={<Code size={18} />}
+                                label="PRD & Architecture"
+                                step="04"
+                                isActive={currentStage === 'PRD' || pathname === '/prd-builder'}
+                                color="purple"
+                                badge={currentStage === 'PRD' ? 'Active' : null}
+                                isCollapsed={isCollapsed}
                             />
                             <NavLink
                                 href="/mvp"
                                 icon={<Layers size={18} />}
                                 label="Build"
-                                step="04"
+                                step="05"
                                 isActive={currentStage === 'MVP_BUILD' || pathname === '/mvp'}
-                                color="purple"
+                                color="emerald"
                                 badge={currentStage === 'MVP_BUILD' ? 'Active' : null}
+                                isCollapsed={isCollapsed}
                             />
                             <NavLink
                                 href="/deploy"
                                 icon={<Rocket size={18} />}
                                 label="Launch"
-                                step="05"
+                                step="06"
                                 isActive={(currentStage === 'COMPLETED' || currentStage === 'DEPLOY') || pathname === '/deploy'}
-                                color="emerald"
+                                color="blue"
                                 badge={(currentStage === 'COMPLETED' || currentStage === 'DEPLOY') ? 'Active' : null}
+                                isCollapsed={isCollapsed}
                             />
                             <NavLink
                                 href="/monitor"
                                 icon={<Activity size={18} />}
                                 label="Observability"
-                                step="06"
+                                step="07"
                                 isActive={pathname === '/monitor'}
-                                color="blue"
+                                color="amber"
                                 badge={null}
+                                isCollapsed={isCollapsed}
                             />
                         </div>
                     </div>
@@ -176,63 +223,78 @@ const Sidebar = ({ currentStage = "MVP_BUILD" }: { currentStage?: string }) => {
 
                 {/* Settings Section */}
                 <section className="space-y-1.5 pt-2 border-t border-white/5">
-                    <div className="flex items-center justify-between px-4 mb-3 mt-4">
-                        <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-[0.25em]">Settings</span>
-                    </div>
+                    {!isCollapsed && (
+                        <div className="flex items-center justify-between px-4 mb-3 mt-4">
+                            <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-[0.25em]">Settings</span>
+                        </div>
+                    )}
                     <NavLink
                         href="/resources"
                         icon={<Library size={18} />}
                         label="Resources"
                         isActive={pathname === '/resources'}
+                        isCollapsed={isCollapsed}
                     />
                     <NavLink
                         href="/settings"
                         icon={<Lock size={18} />}
                         label="System Preference"
                         isActive={pathname === '/settings'}
+                        isCollapsed={isCollapsed}
                     />
+
                     <NavLink
-                        href="/billing"
-                        icon={<CreditCard size={18} />}
-                        label="Billing & Plan"
-                        isActive={pathname === '/billing'}
+                        href="/admin"
+                        icon={<Share2 size={18} />}
+                        label="Admin Control Plane"
+                        isActive={pathname.startsWith('/admin')}
+                        color="amber"
+                        isCollapsed={isCollapsed}
                     />
                 </section>
             </nav>
 
             {/* Premium Footer Status Panel */}
-            <div className="p-4 pt-2 border-t border-white/5">
-                <div className="glass-card rounded-xl p-4 overflow-hidden relative group cursor-pointer">
-                    {/* Gradient Overlay on Hover */}
-                    <div className="absolute inset-0 bg-gradient-to-br from-indigo-500/10 via-purple-500/10 to-pink-500/10 opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
+            {!isCollapsed && (
+                <div className="p-4 pt-2 border-t border-white/5">
+                    <div className="glass-card rounded-xl p-4 overflow-hidden relative group cursor-pointer">
+                        {/* Gradient Overlay on Hover */}
+                        <div className="absolute inset-0 bg-gradient-to-br from-indigo-500/10 via-purple-500/10 to-pink-500/10 opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
 
-                    <div className="relative z-10">
-                        <div className="flex items-center justify-between mb-3">
-                            <span className="text-[10px] font-bold text-indigo-400 uppercase tracking-wider flex items-center space-x-2">
-                                <span>System Integrity</span>
-                                <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse shadow-lg shadow-emerald-400/50" />
-                            </span>
-                            <div className="text-[9px] font-mono font-semibold text-emerald-400/70">ONLINE</div>
-                        </div>
-
-                        {/* Enhanced Progress Bar */}
-                        <div className="h-1.5 w-full bg-white/5 rounded-full overflow-hidden relative mb-3">
-                            <div className="absolute inset-0 bg-gradient-to-r from-indigo-500/20 via-purple-500/20 to-pink-500/20 rounded-full" />
-                            <div
-                                className="h-full bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500 rounded-full transition-all duration-1000 relative overflow-hidden"
-                                style={{ width: '98.2%' }}
-                            >
-                                <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent animate-shimmer" />
+                        <div className="relative z-10">
+                            <div className="flex items-center justify-between mb-3">
+                                <span className="text-[10px] font-bold text-indigo-400 uppercase tracking-wider flex items-center space-x-2">
+                                    <span>System Integrity</span>
+                                    <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse shadow-lg shadow-emerald-400/50" />
+                                </span>
+                                <div className="text-[9px] font-mono font-semibold text-emerald-400/70">ONLINE</div>
                             </div>
-                        </div>
 
-                        <div className="flex justify-between items-center text-[9px] font-mono font-semibold">
-                            <span className="text-zinc-600">NODE: us-east-1</span>
-                            <span className="text-zinc-500 px-2 py-0.5">v1.2.4-stable</span>
+                            {/* Enhanced Progress Bar */}
+                            <div className="h-1.5 w-full bg-white/5 rounded-full overflow-hidden relative mb-3">
+                                <div className="absolute inset-0 bg-gradient-to-r from-indigo-500/20 via-purple-500/20 to-pink-500/20 rounded-full" />
+                                <div
+                                    className="h-full bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500 rounded-full transition-all duration-1000 relative overflow-hidden"
+                                    style={{ width: '98.2%' }}
+                                >
+                                    <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent animate-shimmer" />
+                                </div>
+                            </div>
+
+                            <div className="flex justify-between items-center text-[9px] font-mono font-semibold">
+                                <span className="text-zinc-600">NODE: us-east-1</span>
+                                <span className="text-zinc-500 px-2 py-0.5">v1.2.4-stable</span>
+                            </div>
                         </div>
                     </div>
                 </div>
-            </div>
+            )}
+            
+            {isCollapsed && (
+                <div className="p-4 pt-2 border-t border-white/5 flex justify-center">
+                    <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse shadow-lg shadow-emerald-400/50" title="System Online" />
+                </div>
+            )}
         </div>
     );
 };
@@ -246,9 +308,10 @@ interface NavLinkProps {
     isActive?: boolean;
     color?: 'amber' | 'blue' | 'indigo' | 'purple' | 'emerald';
     badge?: string | null;
+    isCollapsed?: boolean;
 }
 
-const NavLink: React.FC<NavLinkProps> = ({ href, icon, label, step, isActive = false, color = 'blue', badge }) => {
+const NavLink: React.FC<NavLinkProps> = ({ href, icon, label, step, isActive = false, color = 'blue', badge, isCollapsed = false }) => {
     const colorConfig: Record<string, { text: string; bg: string; border: string; glow: string }> = {
         amber: {
             text: 'text-amber-400',
@@ -287,15 +350,16 @@ const NavLink: React.FC<NavLinkProps> = ({ href, icon, label, step, isActive = f
     return (
         <Link
             href={href}
-            className={`relative flex items-center justify-between px-3 py-2.5 rounded-xl transition-all duration-300 group ${isActive
+            title={isCollapsed ? label : undefined}
+            className={`relative flex items-center ${isCollapsed ? 'justify-center' : 'justify-between'} px-3 py-2.5 rounded-xl transition-all duration-300 group ${isActive
                 ? `${colors.bg} ${colors.border} border text-white shadow-lg ${colors.glow}`
                 : 'text-zinc-400 hover:text-white hover:bg-white/5 border border-transparent'
                 }`}
         >
-            <div className="flex items-center space-x-3 flex-1">
+            <div className={`flex items-center ${isCollapsed ? 'justify-center' : 'space-x-3'} flex-1 overflow-hidden`}>
                 {/* Step Number with Line Connector */}
-                {step && (
-                    <div className={`relative flex items-center justify-center min-w-[20px] ${isActive ? colors.text : 'text-zinc-600 group-hover:text-zinc-400'
+                {step && !isCollapsed && (
+                    <div className={`relative flex items-center justify-center min-w-[20px] shrink-0 ${isActive ? colors.text : 'text-zinc-600 group-hover:text-zinc-400'
                         }`}>
                         <span className="text-[10px] font-bold font-mono relative z-10">{step}</span>
                         {isActive && (
@@ -305,7 +369,7 @@ const NavLink: React.FC<NavLinkProps> = ({ href, icon, label, step, isActive = f
                 )}
 
                 {/* Icon */}
-                <div className={`transition-transform duration-300 ${isActive ? 'scale-110' : 'group-hover:scale-105'}`}>
+                <div className={`transition-transform duration-300 shrink-0 ${isActive ? 'scale-110' : 'group-hover:scale-105'}`}>
                     {React.cloneElement(icon as React.ReactElement, {
                         className: isActive ? colors.text : 'text-zinc-500 group-hover:text-zinc-300',
                         strokeWidth: isActive ? 2.5 : 2
@@ -313,24 +377,33 @@ const NavLink: React.FC<NavLinkProps> = ({ href, icon, label, step, isActive = f
                 </div>
 
                 {/* Label */}
-                <span className={`text-sm font-medium transition-colors ${isActive ? 'font-semibold' : 'font-medium'
-                    }`}>
-                    {label}
-                </span>
+                {!isCollapsed && (
+                    <span className={`text-sm font-medium transition-colors ${isActive ? 'font-semibold' : 'font-medium'
+                        } whitespace-nowrap`}>
+                        {label}
+                    </span>
+                )}
             </div>
 
             {/* Active Indicator & Badge */}
-            <div className="flex items-center space-x-2">
-                {badge && (
-                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${isActive ? `${colors.bg} ${colors.text} border ${colors.border}` : 'bg-zinc-800 text-zinc-500'
-                        } border uppercase tracking-wider`}>
-                        {badge}
-                    </span>
-                )}
-                {isActive && (
-                    <div className={`w-2 h-2 rounded-full ${colors.bg.replace('/10', '')} animate-pulse shadow-lg ${colors.glow.replace('shadow-', 'shadow-')}`} />
-                )}
-            </div>
+            {!isCollapsed && (
+                <div className="flex items-center space-x-2 shrink-0">
+                    {badge && (
+                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${isActive ? `${colors.bg} ${colors.text} border ${colors.border}` : 'bg-zinc-800 text-zinc-500'
+                            } border uppercase tracking-wider`}>
+                            {badge}
+                        </span>
+                    )}
+                    {isActive && (
+                        <div className={`w-2 h-2 rounded-full ${colors.bg.replace('/10', '')} animate-pulse shadow-lg ${colors.glow.replace('shadow-', 'shadow-')}`} />
+                    )}
+                </div>
+            )}
+            
+            {/* Minimal active indicator for collapsed state */}
+            {isCollapsed && isActive && (
+                <div className={`absolute right-1 top-1/2 -translate-y-1/2 w-1.5 h-1.5 rounded-full ${colors.bg.replace('/10', '')} animate-pulse`} />
+            )}
         </Link>
     );
 };

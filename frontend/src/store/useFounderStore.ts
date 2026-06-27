@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { getAuthHeaders } from '@/utils/supabase/auth';
+import { apiFetch } from '@/lib/apiClient';
 
 interface Snapshot {
     active_users: {
@@ -124,8 +125,8 @@ export const useFounderStore = create<FounderState>((set, get) => ({
     fetchSnapshot: async () => {
         try {
             const headers = await getAuthHeaders();
-            const res = await fetch('/api/v1/founder/snapshot', { headers });
-            if (res.ok) set({ snapshot: await res.json() });
+            const data = await apiFetch<any>('/api/v1/founder/snapshot', { headers });
+            set({ snapshot: data });
         } catch (error) {
             console.error('Failed to fetch snapshot:', error);
         }
@@ -134,8 +135,8 @@ export const useFounderStore = create<FounderState>((set, get) => ({
     fetchInfra: async () => {
         try {
             const headers = await getAuthHeaders();
-            const res = await fetch('/api/v1/founder/infra', { headers });
-            if (res.ok) set({ infra: await res.json() });
+            const data = await apiFetch<any>('/api/v1/founder/infra', { headers });
+            set({ infra: data });
         } catch (error) {
             console.error('Failed to fetch infra:', error);
         }
@@ -144,8 +145,8 @@ export const useFounderStore = create<FounderState>((set, get) => ({
     fetchAiEngine: async () => {
         try {
             const headers = await getAuthHeaders();
-            const res = await fetch('/api/v1/founder/ai-engine', { headers });
-            if (res.ok) set({ aiEngine: await res.json() });
+            const data = await apiFetch<any>('/api/v1/founder/ai-engine', { headers });
+            set({ aiEngine: data });
         } catch (error) {
             console.error('Failed to fetch AI engine:', error);
         }
@@ -154,8 +155,8 @@ export const useFounderStore = create<FounderState>((set, get) => ({
     fetchFailures: async () => {
         try {
             const headers = await getAuthHeaders();
-            const res = await fetch('/api/v1/founder/failures', { headers });
-            if (res.ok) set({ failures: await res.json() });
+            const data = await apiFetch<any>('/api/v1/founder/failures', { headers });
+            set({ failures: data });
         } catch (error) {
             console.error('Failed to fetch failures:', error);
         }
@@ -164,8 +165,8 @@ export const useFounderStore = create<FounderState>((set, get) => ({
     fetchRevenueRisk: async () => {
         try {
             const headers = await getAuthHeaders();
-            const res = await fetch('/api/v1/founder/revenue-risk', { headers });
-            if (res.ok) set({ revenueRisk: await res.json() });
+            const data = await apiFetch<any>('/api/v1/founder/revenue-risk', { headers });
+            set({ revenueRisk: data });
         } catch (error) {
             console.error('Failed to fetch revenue risk:', error);
         }
@@ -174,15 +175,12 @@ export const useFounderStore = create<FounderState>((set, get) => ({
     fetchStatus: async () => {
         try {
             const headers = await getAuthHeaders();
-            const res = await fetch('/api/v1/founder/status', { headers });
-            if (res.ok) {
-                const data = await res.json();
-                set({
-                    systemStatus: data.system_status,
-                    emergencyMode: data.emergency_mode,
-                    featureFlags: data.featureFlags
-                });
-            }
+            const data = await apiFetch<any>('/api/v1/founder/status', { headers });
+            set({
+                systemStatus: data.system_status,
+                emergencyMode: data.emergency_mode,
+                featureFlags: data.featureFlags
+            });
         } catch (error) {
             console.error('Failed to fetch status:', error);
         }
@@ -191,8 +189,8 @@ export const useFounderStore = create<FounderState>((set, get) => ({
     fetchVcsHealth: async () => {
         try {
             const headers = await getAuthHeaders();
-            const res = await fetch('/api/v1/founder/vcs-health', { headers });
-            if (res.ok) set({ vcsHealth: await res.json() });
+            const data = await apiFetch<any>('/api/v1/founder/vcs-health', { headers });
+            set({ vcsHealth: data });
         } catch (error) {
             console.error('Failed to fetch VCS health:', error);
         }
@@ -201,15 +199,12 @@ export const useFounderStore = create<FounderState>((set, get) => ({
     updateFeatureFlag: async (flag, value) => {
         try {
             const headers = await getAuthHeaders();
-            const res = await fetch('/api/v1/founder/feature-flag', {
+            const data = await apiFetch<any>('/api/v1/founder/feature-flag', {
                 method: 'POST',
                 headers,
                 body: JSON.stringify({ flag, value })
             });
-            if (res.ok) {
-                const data = await res.json();
-                set({ featureFlags: data.flags });
-            }
+            set({ featureFlags: data.flags });
         } catch (error) {
             console.error('Failed to update feature flag:', error);
         }
@@ -218,14 +213,12 @@ export const useFounderStore = create<FounderState>((set, get) => ({
     triggerEmergency: async (action) => {
         try {
             const headers = await getAuthHeaders();
-            const res = await fetch('/api/v1/founder/emergency', {
+            await apiFetch('/api/v1/founder/emergency', {
                 method: 'POST',
                 headers,
                 body: JSON.stringify({ action })
             });
-            if (res.ok) {
-                await get().fetchStatus();
-            }
+            await get().fetchStatus();
         } catch (error) {
             console.error('Failed to trigger emergency:', error);
         }

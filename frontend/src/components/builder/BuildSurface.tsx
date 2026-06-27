@@ -180,7 +180,7 @@ function TabButton({ active, icon, label, onClick }: any) {
     );
 }
 
-function FileIcon({ type }: { type: string }) {
+function FileIcon({ type }: { type?: string }) {
     // Simplified icon logic
     return <CodeIcon size={16} />;
 }

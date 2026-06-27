@@ -63,6 +63,32 @@ class ProjectService:
         except Exception as e:
             logger.error(f"Supabase error in delete_project({project_id}): {e}")
 
+    def get_project_files(self, project_id: str) -> List[Dict[str, Any]]:
+        try:
+            response = supabase.table("project_files").select("*").eq("project_id", project_id).execute()
+            return response.data
+        except Exception as e:
+            logger.error(f"Supabase error in get_project_files({project_id}): {e}")
+            return []
+
+    def get_project_zip(self, project_id: str):
+        import io
+        import zipfile
+        files = self.get_project_files(project_id)
+        if not files:
+            raise ValueError("No files found for project")
+            
+        zip_buffer = io.BytesIO()
+        with zipfile.ZipFile(zip_buffer, "a", zipfile.ZIP_DEFLATED, False) as zip_file:
+            for f in files:
+                file_path = f.get("path")
+                content = f.get("content", "")
+                if file_path:
+                    zip_file.writestr(file_path, content)
+                    
+        zip_buffer.seek(0)
+        return zip_buffer
+
     # --- Environment Variables ---
     def get_env_vars(self, project_id: str) -> List[Dict[str, Any]]:
         try:

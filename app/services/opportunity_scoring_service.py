@@ -8,6 +8,7 @@ from app.models.opportunity_score import (
     OpportunityIntelligenceResponse,
 )
 from app.services.market_signal_aggregator import MarketSignalAggregator
+from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -61,7 +62,9 @@ Scoring guidance:
 5. trend_score        — Is this aligned with a rising trend? (Use Google Trends growth %)
 6. difficulty_score   — How hard is it to build the MVP?
 
-Return a JSON object with EXACTLY this structure:
+Response MUST be ONLY a valid JSON object. No markdown formatting. No explanations. No trailing commas.
+
+Schema:
 {
   "demand_score": 7.5,
   "market_size_score": 8.0,
@@ -74,26 +77,20 @@ Return a JSON object with EXACTLY this structure:
 
         user_message = f"Evaluate this opportunity:\n\n{full_context}"
 
-        response = await self.ai.chat_completion(
+        # Use task-aware AI router for opportunity analysis
+        response = await self.ai.routed_completion(
+            task="validation_scoring",
             messages=[{"role": "user", "content": user_message}],
             system_prompt=system_prompt,
             response_format={"type": "json_object"},
             max_tokens=800,
         )
         
-        content = response["content"]
-        logger.info(f"AI Response Content: {content}")
+        raw_content = response["content"]
+        logger.info(f"AI Response Content: {raw_content}")
         
-        try:
-            raw = json.loads(content)
-        except json.JSONDecodeError as je:
-            logger.error(f"JSON Decode Error: {je}. Raw content: {content}")
-            # Try to extract JSON if it's wrapped in triple backticks
-            if "```json" in content:
-                content = content.split("```json")[-1].split("```")[0].strip()
-            elif "```" in content:
-                content = content.split("```")[-1].split("```")[0].strip()
-            raw = json.loads(content)
+        from app.utils.json_helper import safe_json_parse
+        raw = safe_json_parse(raw_content)
 
         def _clamp(v: Any, default: float = 5.0) -> float:
             try:
@@ -159,7 +156,7 @@ Return a JSON object with EXACTLY this structure:
                 "difficulty_score": difficulty,
                 "analysis_json": result_dict,
             }
-            self.supabase.table("opportunity_scores").insert(db_row).execute()
+            self.supabase.table("opportunity_scores").upsert(db_row, on_conflict="idea_id").execute()
             logger.info(f"Opportunity score saved: {composite}")
         except Exception as db_err:
             logger.warning(f"Failed to persist opportunity score: {db_err}")
@@ -198,7 +195,8 @@ Return a JSON object with this exact structure:
 
         user_message = f"Evaluate this startup idea like a venture capitalist:\n\n{idea_text}"
 
-        response = await self.ai.chat_completion(
+        response = await self.ai.routed_completion(
+            task="validation_scoring",
             messages=[{"role": "user", "content": user_message}],
             system_prompt=system_prompt,
             response_format={"type": "json_object"},
@@ -217,7 +215,7 @@ Return a JSON object with this exact structure:
                 "trend": score_data.get("trend"),
                 "summary": score_data.get("summary"),
             }
-            self.supabase.table("opportunity_scores").insert(db_data).execute()
+            self.supabase.table("opportunity_scores").upsert(db_data, on_conflict="idea_id").execute()
 
         return {"score_data": score_data}
 

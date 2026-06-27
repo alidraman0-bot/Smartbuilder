@@ -22,6 +22,8 @@ import {
 } from 'lucide-react';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
+import { apiFetch } from '@/lib/apiClient';
+import { getAuthHeaders } from '@/utils/supabase/auth';
 
 function cn(...inputs: ClassValue[]) {
     return twMerge(clsx(inputs));
@@ -54,15 +56,11 @@ export default function BlueprintPage() {
     useEffect(() => {
         const fetchBlueprint = async () => {
             try {
-                const res = await fetch(`/api/blueprint/share/${id}`);
-                if (res.ok) {
-                    const data = await res.json();
-                    setBlueprint(data);
-                } else {
-                    setError("Blueprint not found or not public.");
-                }
-            } catch (err) {
-                setError("Failed to load blueprint.");
+                const headers = await getAuthHeaders();
+                const data = await apiFetch<BlueprintData>(`/api/blueprint/share/${id}`, { headers });
+                setBlueprint(data);
+            } catch (err: any) {
+                setError(err.message || "Failed to load blueprint.");
             } finally {
                 setLoading(false);
             }

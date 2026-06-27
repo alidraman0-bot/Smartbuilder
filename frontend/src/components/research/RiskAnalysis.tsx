@@ -3,11 +3,11 @@ import { AlertTriangle, Shield } from 'lucide-react';
 import { RiskAnalysis as RiskAnalysisType } from '@/types/research';
 
 interface RiskAnalysisProps {
-    analysis: RiskAnalysisType;
+    risk: RiskAnalysisType;
 }
 
-export default function RiskAnalysis({ analysis }: RiskAnalysisProps) {
-    const { risk_categories, overall_risk_level } = analysis;
+export default function RiskAnalysis({ risk }: RiskAnalysisProps) {
+    const { risk_categories, overall_risk_level } = risk;
 
     const getRiskLevelColor = (level: string) => {
         switch (level) {
